@@ -85,6 +85,14 @@ export async function createServer(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
+  // check if ip is already in use
+  const existing = await ServerModel.findOne({
+    "general.ip": payload.general?.ip,
+  });
+
+  const error = new Error("IP already in use");
+  (error as any).statusCode = 409;
+  if (existing) throw error;
   const created = await ServerModel.create(payload as IServer);
   // Invalidate list caches (version bump)
   await bumpCollectionVersion(redis);

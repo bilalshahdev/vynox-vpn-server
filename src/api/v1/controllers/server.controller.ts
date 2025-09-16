@@ -30,6 +30,7 @@ export async function getById(
   const server = await S.getServerById(req.params.id, {
     redis: req.server.redis,
   });
+
   if (!server)
     return reply
       .code(404)

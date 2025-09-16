@@ -14,9 +14,9 @@ import {
 } from "../../../schemas/server.schema";
 
 export default async function serverRoutes(app: FastifyInstance) {
-  app.addHook("onRoute", (routeOptions) => {
-    routeOptions.schema = {
-      ...(routeOptions.schema || {}),
+  app.addHook("onRoute", (opts) => {
+    opts.schema = {
+      ...(opts.schema || {}),
       tags: ["servers"],
       security: [{ bearerAuth: [] }],
     };
@@ -47,28 +47,28 @@ export default async function serverRoutes(app: FastifyInstance) {
 
   // PATCH /servers/:id/mode
   app.patch(
-    "/ :id/mode".replace(" ", ""),
+    "/:id/mode",
     { schema: updateServerModeSchema },
     ServerController.updateMode
   );
 
   // PATCH /servers/:id/is-pro
   app.patch(
-    "/ :id/is-pro".replace(" ", ""),
+    "/:id/is-pro",
     { schema: updateServerIsProSchema },
     ServerController.updateIsPro
   );
 
   // PATCH /servers/:id/openvpn-config
   app.patch(
-    "/ :id/openvpn-config".replace(" ", ""),
+    "/:id/openvpn-config",
     { schema: updateOpenVPNConfigSchema },
     ServerController.updateOpenVPNConfig
   );
 
   // PATCH /servers/:id/wireguard-config
   app.patch(
-    "/ :id/wireguard-config".replace(" ", ""),
+    "/:id/wireguard-config",
     { schema: updateWireguardConfigSchema },
     ServerController.updateWireguardConfig
   );

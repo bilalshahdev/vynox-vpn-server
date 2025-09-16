@@ -11,9 +11,9 @@ import {
 } from "../../../schemas/ad.schema";
 
 export default async function adRoutes(app: FastifyInstance) {
-  app.addHook("onRoute", (routeOptions) => {
-    routeOptions.schema = {
-      ...(routeOptions.schema || {}),
+  app.addHook("onRoute", (opts) => {
+    opts.schema = {
+      ...(opts.schema || {}),
       tags: ["ads"],
       security: [{ bearerAuth: [] }],
     };

@@ -131,6 +131,13 @@ export async function getAdById(id: string, deps: CacheDeps = {}) {
 
 export async function createAd(payload: Partial<IAd>, deps: CacheDeps = {}) {
   const { redis } = deps;
+  const existing = await AdModel.findOne({
+    ad_id: payload.ad_id,
+  });
+
+  const error = new Error("ad_id already in use");
+  (error as any).statusCode = 409;
+  if (existing) throw error;
   const created = await AdModel.create(payload as IAd);
   await bumpCollectionVersion(redis); // invalidate lists
   return created.toObject();

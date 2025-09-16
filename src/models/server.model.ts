@@ -40,7 +40,11 @@ const serverSchema = new Schema<IServer>(
       country_code: { type: String, required: true },
       is_pro: { type: Boolean, default: false },
       mode: { type: String, enum: ["test", "live"], default: "test" },
-      ip: { type: String, required: true },
+      ip: {
+        type: String,
+        required: true,
+        unique: true,
+      },
       latitude: { type: Number, required: true },
       longitude: { type: Number, required: true },
       os_type: { type: String, enum: ["android", "ios"], required: true },

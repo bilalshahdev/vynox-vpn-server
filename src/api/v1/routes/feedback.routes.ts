@@ -9,9 +9,9 @@ import {
 import * as FeedbackController from "../controllers/feedback.controller";
 
 export default async function feedbackRoutes(app: FastifyInstance) {
-  app.addHook("onRoute", (routeOptions) => {
-    routeOptions.schema = {
-      ...(routeOptions.schema || {}),
+  app.addHook("onRoute", (opts) => {
+    opts.schema = {
+      ...(opts.schema || {}),
       tags: ["feedback"],
       security: [{ bearerAuth: [] }],
     };

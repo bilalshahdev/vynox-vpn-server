@@ -10,9 +10,9 @@ import {
 } from "../../../schemas/connectivity.schema";
 
 export default async function connectivityRoutes(app: FastifyInstance) {
-  app.addHook("onRoute", (routeOptions) => {
-    routeOptions.schema = {
-      ...(routeOptions.schema || {}),
+  app.addHook("onRoute", (opts) => {
+    opts.schema = {
+      ...(opts.schema || {}),
       tags: ["connectivity"],
       security: [{ bearerAuth: [] }],
     };

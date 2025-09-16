@@ -4,6 +4,7 @@ import fastifyMetrics from "fastify-metrics";
 import usersRoutesV1 from "./api/v1/routes";
 import corsPlugin from "./plugins/cors";
 import dbPlugin from "./plugins/db";
+import errorHandlerPlugin from "./plugins/error-handler";
 import helmetPlugin from "./plugins/helmet";
 import redisPlugin from "./plugins/redis";
 import swaggerPlugin from "./plugins/swagger";
@@ -20,7 +21,7 @@ export function buildApp(): FastifyInstance {
     ajv: { customOptions: { removeAdditional: true, coerceTypes: true } },
     disableRequestLogging: process.env.NODE_ENV === "production",
   });
-
+  app.register(errorHandlerPlugin);
   app.register(helmetPlugin, {
     /* keep minimal headers needed */
   });
@@ -59,16 +60,6 @@ export function buildApp(): FastifyInstance {
       time: new Date().toISOString(),
     })
   );
-
-  // Avoid logging full error stack on hot paths in prod
-  app.setErrorHandler((error, request, reply) => {
-    if (process.env.NODE_ENV === "production")
-      request.log.error({ msg: error.message });
-    else request.log.error(error);
-    reply
-      .status(error.statusCode || 500)
-      .send({ success: false, message: "Internal Server Error" });
-  });
 
   return app;
 }
