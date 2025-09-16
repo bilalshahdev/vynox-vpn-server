@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      target: prod # 👈 use prod stage
+    container_name: fastify_app
+    ports:
+      - "3333:3333"
+    env_file:
+      - .env.production
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    container_name: fastify_redis
+    ports:
+      - "6379:6379"

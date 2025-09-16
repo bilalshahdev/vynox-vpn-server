@@ -1,0 +1,30 @@
+# Node modules and debug logs
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build output
+dist
+coverage
+
+# Env files (you’ll mount them separately, don’t bake secrets in image)
+.env
+.env.*
+!.env.example
+
+# OS & editor stuff
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+
+# Docker-related
+docker-compose*.yml
+Dockerfile*
+
+# Git
+.git
+.gitignore
