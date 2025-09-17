@@ -1,6 +1,40 @@
 // src/schemas/server.schema.ts
 import { FromSchema } from "json-schema-to-ts";
 
+const osType = { type: "string", enum: ["android", "ios"] } as const;
+const categoriesEnum = {
+  type: "string",
+  enum: ["gaming", "streaming"],
+} as const;
+
+const commonRequired = [
+  "name",
+  "categories",
+  "country",
+  "city",
+  "country_code",
+  "is_pro",
+  "mode",
+  "ip",
+  "latitude",
+  "longitude",
+  "os_type",
+];
+
+const commonProperties = {
+  name: { type: "string" },
+  categories: { type: "array", items: categoriesEnum, minItems: 1 },
+  country: { type: "string" },
+  city: { type: "string" },
+  country_code: { type: "string" },
+  is_pro: { type: "boolean" },
+  mode: { type: "string", enum: ["test", "live"] },
+  ip: { type: "string" },
+  latitude: { type: "number" },
+  longitude: { type: "number" },
+  os_type: osType,
+};
+
 // ---------- Shared ----------
 export const paramsWithIdSchema = {
   type: "object",
@@ -8,30 +42,6 @@ export const paramsWithIdSchema = {
     id: { type: "string" },
   },
   required: ["id"],
-  additionalProperties: false,
-} as const;
-
-const osType = { type: "string", enum: ["android", "ios"] } as const;
-const categoriesEnum = {
-  type: "string",
-  enum: ["gaming", "streaming"],
-} as const;
-
-const generalSchema = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    categories: { type: "array", items: categoriesEnum, minItems: 1 },
-    country: { type: "string" },
-    city: { type: "string" },
-    country_code: { type: "string" },
-    is_pro: { type: "boolean" },
-    mode: { type: "string", enum: ["test", "live"] },
-    ip: { type: "string" },
-    latitude: { type: "number" },
-    longitude: { type: "number" },
-    os_type: osType,
-  },
   additionalProperties: false,
 } as const;
 
@@ -54,36 +64,49 @@ const wireguardConfigSchema = {
   additionalProperties: false,
 } as const;
 
-const serverOutSchema = {
+/**
+ * Flattened server shape (used for list items and by-id base)
+ * NOTE: list items exclude VPN configs; by-id includes them optionally.
+ */
+const serverFlatBase = {
   type: "object",
   properties: {
     _id: { type: "string" },
-    general: {
-      ...generalSchema,
-      required: [
-        "name",
-        "categories",
-        "country",
-        "city",
-        "country_code",
-        "is_pro",
-        "mode",
-        "ip",
-        "latitude",
-        "longitude",
-        "os_type",
-      ],
-    },
-    openvpn_config: openvpnConfigSchema,
-    wireguard_config: wireguardConfigSchema,
+    ...commonProperties,
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
-  required: ["_id", "general", "created_at", "updated_at"],
+  required: ["_id", ...commonRequired, "created_at", "updated_at"],
   additionalProperties: false,
 } as const;
 
-// ---------- List ----------
+// List item = flattened server WITHOUT VPN configs
+const serverListItemSchema = serverFlatBase;
+
+// By-ID output = flattened server WITH optional VPN configs
+const serverByIdOutSchema = {
+  ...serverFlatBase,
+  properties: {
+    ...serverFlatBase.properties,
+    openvpn_config: openvpnConfigSchema,
+    wireguard_config: wireguardConfigSchema,
+  },
+  // VPN configs remain optional
+} as const;
+
+// ---------- List (grouped by country) ----------
+const countryGroupSchema = {
+  type: "object",
+  properties: {
+    country: { type: "string" },
+    country_code: { type: "string" },
+    flag: { type: "string" }, // e.g., "us.png"
+    servers: { type: "array", items: serverListItemSchema },
+  },
+  required: ["country", "country_code", "flag", "servers"],
+  additionalProperties: false,
+} as const;
+
 export const listServersSchema = {
   querystring: {
     type: "object",
@@ -110,7 +133,8 @@ export const listServersSchema = {
           required: ["page", "limit", "total", "pages"],
           additionalProperties: false,
         },
-        data: { type: "array", items: serverOutSchema },
+        // GROUPED result
+        data: { type: "array", items: countryGroupSchema },
       },
       required: ["success", "pagination", "data"],
       additionalProperties: false,
@@ -121,9 +145,8 @@ export const listServersSchema = {
 export type FromListServersQuery = FromSchema<
   typeof listServersSchema.querystring
 >;
-// Removed: export type FromListServersByOSParams
 
-// ---------- Get by ID ----------
+// ---------- Get by ID (flattened + configs) ----------
 export const getServerByIdSchema = {
   params: paramsWithIdSchema,
   response: {
@@ -131,24 +154,56 @@ export const getServerByIdSchema = {
       type: "object",
       properties: {
         success: { type: "boolean" },
-        data: serverOutSchema,
+        data: serverByIdOutSchema,
       },
       required: ["success", "data"],
       additionalProperties: false,
     },
     404: {
       type: "object",
-      properties: {
-        success: { type: "boolean" },
-        message: { type: "string" },
-      },
+      properties: { success: { type: "boolean" }, message: { type: "string" } },
       required: ["success", "message"],
       additionalProperties: false,
     },
   },
 } as const;
 
-// ---------- Create ----------
+// ---------- Create (keep as-is; returns full server doc shape if you prefer) ----------
+const generalSchema = {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    categories: { type: "array", items: categoriesEnum, minItems: 1 },
+    country: { type: "string" },
+    city: { type: "string" },
+    country_code: { type: "string" },
+    is_pro: { type: "boolean" },
+    mode: { type: "string", enum: ["test", "live"] },
+    ip: { type: "string" },
+    latitude: { type: "number" },
+    longitude: { type: "number" },
+    os_type: osType,
+  },
+  additionalProperties: false,
+} as const;
+
+const serverOutSchema = {
+  type: "object",
+  properties: {
+    _id: { type: "string" },
+    general: {
+      ...generalSchema,
+      required: commonRequired,
+    },
+    openvpn_config: openvpnConfigSchema,
+    wireguard_config: wireguardConfigSchema,
+    created_at: { type: "string" },
+    updated_at: { type: "string" },
+  },
+  required: ["_id", "general", "created_at", "updated_at"],
+  additionalProperties: false,
+} as const;
+
 export const createServerSchema = {
   body: {
     type: "object",
@@ -176,10 +231,7 @@ export const createServerSchema = {
   response: {
     201: {
       type: "object",
-      properties: {
-        success: { type: "boolean" },
-        data: serverOutSchema,
-      },
+      properties: { success: { type: "boolean" }, data: serverOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -203,19 +255,13 @@ export const updateServerSchema = {
   response: {
     200: {
       type: "object",
-      properties: {
-        success: { type: "boolean" },
-        data: serverOutSchema,
-      },
+      properties: { success: { type: "boolean" }, data: serverOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
     404: {
       type: "object",
-      properties: {
-        success: { type: "boolean" },
-        message: { type: "string" },
-      },
+      properties: { success: { type: "boolean" }, message: { type: "string" } },
       required: ["success", "message"],
       additionalProperties: false,
     },
@@ -229,9 +275,7 @@ export const updateServerModeSchema = {
   params: paramsWithIdSchema,
   body: {
     type: "object",
-    properties: {
-      mode: { type: "string", enum: ["test", "live"] },
-    },
+    properties: { mode: { type: "string", enum: ["test", "live"] } },
     required: ["mode"],
     additionalProperties: false,
   } as const,

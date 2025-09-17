@@ -6,8 +6,9 @@ export interface IServer extends Document {
     name: string;
     categories: string[];
     country: string;
-    city: string;
     country_code: string;
+    flag: string;
+    city: string;
     is_pro: boolean;
     mode: "test" | "live";
     ip: string;
@@ -36,8 +37,9 @@ const serverSchema = new Schema<IServer>(
         { type: String, enum: ["gaming", "streaming"], required: true },
       ],
       country: { type: String, required: true },
-      city: { type: String, required: true },
       country_code: { type: String, required: true },
+      flag: { type: String, required: true },
+      city: { type: String, required: true },
       is_pro: { type: Boolean, default: false },
       mode: { type: String, enum: ["test", "live"], default: "test" },
       ip: {

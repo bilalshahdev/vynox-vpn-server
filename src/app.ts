@@ -8,9 +8,9 @@ import errorHandlerPlugin from "./plugins/error-handler";
 import helmetPlugin from "./plugins/helmet";
 import redisPlugin from "./plugins/redis";
 import swaggerPlugin from "./plugins/swagger";
+import flags from "./plugins/flags";
 // import createLoggerConfig from "./utils/logger";
 
-// src/app.ts
 export function buildApp(): FastifyInstance {
   const app = Fastify({
     logger: { level: process.env.NODE_ENV === "production" ? "warn" : "debug" },
@@ -22,44 +22,24 @@ export function buildApp(): FastifyInstance {
     disableRequestLogging: process.env.NODE_ENV === "production",
   });
   app.register(errorHandlerPlugin);
-  app.register(helmetPlugin, {
-    /* keep minimal headers needed */
-  });
+  app.register(helmetPlugin, {});
   app.register(corsPlugin);
 
   if (process.env.NODE_ENV !== "production") {
-    app.register(swaggerPlugin);
     app.register(fastifyMetrics, { endpoint: "/metrics" });
   }
 
+  app.register(swaggerPlugin);
   app.register(dbPlugin);
   app.register(redisPlugin);
-
   app.register(usersRoutesV1, { prefix: "/api/v1" });
+  app.register(flags);
 
-  app.get(
-    "/health",
-    {
-      schema: {
-        response: {
-          200: {
-            type: "object",
-            properties: {
-              status: { type: "string" },
-              uptime: { type: "number" },
-              time: { type: "string", format: "date-time" },
-            },
-            additionalProperties: false,
-          },
-        },
-      },
-    },
-    async () => ({
-      status: "ok",
-      uptime: process.uptime(),
-      time: new Date().toISOString(),
-    })
-  );
+  app.get("/health", async () => ({
+    status: "ok",
+    uptime: process.uptime(),
+    time: new Date().toISOString(),
+  }));
 
   return app;
 }
