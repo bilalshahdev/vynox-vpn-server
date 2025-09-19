@@ -16,10 +16,26 @@ export async function listServers(
   req: FastifyRequest<{ Querystring: FromListServersQuery }>,
   reply: FastifyReply
 ) {
-  const { os_type, page = 1, limit = 50 } = req.query;
-  const result = await S.listServers({ os_type }, page, limit, {
+  const { os_type, mode, search, page = 1, limit = 50 } = req.query;
+  const result = await S.listServers({ os_type, mode, search }, page, limit, {
     redis: req.server.redis,
   });
+  return reply.send(result);
+}
+
+export async function listGroupedServers(
+  req: FastifyRequest<{ Querystring: FromListServersQuery }>,
+  reply: FastifyReply
+) {
+  const { os_type, mode, search, page = 1, limit = 50 } = req.query;
+  const result = await S.listGroupedServers(
+    { os_type, mode, search },
+    page,
+    limit,
+    {
+      redis: req.server.redis,
+    }
+  );
   return reply.send(result);
 }
 

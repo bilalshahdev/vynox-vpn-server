@@ -11,6 +11,7 @@ import {
   updateOpenVPNConfigSchema,
   updateWireguardConfigSchema,
   paramsWithIdSchema,
+  listGroupedServersSchema,
 } from "../../../schemas/server.schema";
 
 export default async function serverRoutes(app: FastifyInstance) {
@@ -34,6 +35,18 @@ export default async function serverRoutes(app: FastifyInstance) {
       },
     },
     ServerController.listServers
+  );
+
+  app.get(
+    "/grouped",
+    {
+      schema: {
+        ...listGroupedServersSchema,
+        summary: "List grouped servers",
+        description: "List servers grouped by country with pagination.",
+      },
+    },
+    ServerController.listGroupedServers
   );
 
   // GET /servers/:id

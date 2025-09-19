@@ -67,6 +67,7 @@ export type FeedbackListFilter = {
   server_id?: string;
   reason?: string;
   network_type?: string;
+  os_type?: "android" | "ios"; // ⬅️ added
   rating_min?: number;
   rating_max?: number;
   from?: string; // ISO date-time for datetime >= from
@@ -81,6 +82,7 @@ export type CreateFeedbackDTO = {
   rating: number;
   review: string;
   additional_data?: Record<string, unknown>;
+  os_type: "android" | "ios"; // ⬅️ added
   datetime?: string | Date;
 };
 
@@ -114,6 +116,7 @@ export async function listFeedback(
   if (filter.server_id) q.server_id = toObjectId(filter.server_id);
   if (filter.reason) q.reason = filter.reason;
   if (filter.network_type) q.network_type = filter.network_type;
+  if (filter.os_type) q.os_type = filter.os_type; // ⬅️ added
 
   if (filter.rating_min != null || filter.rating_max != null) {
     q.rating = {};
@@ -176,6 +179,7 @@ export async function createFeedback(
     rating: dto.rating,
     review: dto.review,
     additional_data: dto.additional_data,
+    os_type: dto.os_type, // ⬅️ added
     datetime: dto.datetime ? new Date(dto.datetime) : new Date(),
   });
   await bumpCollectionVersion(redis);

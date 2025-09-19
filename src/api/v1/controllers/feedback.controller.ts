@@ -15,6 +15,7 @@ export async function list(
     server_id,
     reason,
     network_type,
+    os_type, // ⬅️ added
     rating_min,
     rating_max,
     from,
@@ -23,7 +24,16 @@ export async function list(
     limit = 50,
   } = req.query;
   const result = await S.listFeedback(
-    { server_id, reason, network_type, rating_min, rating_max, from, to },
+    {
+      server_id,
+      reason,
+      network_type,
+      os_type,
+      rating_min,
+      rating_max,
+      from,
+      to,
+    },
     page,
     limit,
     { redis: req.server.redis }

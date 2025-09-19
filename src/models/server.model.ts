@@ -71,13 +71,11 @@ const serverSchema = new Schema<IServer>(
 
 serverSchema.index({
   "general.os_type": 1,
-  "general.country_code": 1,
   "general.is_pro": 1,
   "general.mode": 1,
+  created_at: 1,
 });
-serverSchema.index({ "general.country_code": 1 });
-serverSchema.index({ "general.is_pro": 1 });
-serverSchema.index({ "general.mode": 1 });
+serverSchema.index({ "general.is_pro": 1, created_at: 1 });
 
 export const ServerModel =
   models.Server || model<IServer>("Server", serverSchema);

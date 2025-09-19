@@ -33,7 +33,7 @@ connectivitySchema.path("disconnected_at").validate(function (v: Date | null) {
 
 connectivitySchema.index({ user_id: 1 });
 connectivitySchema.index({ server_id: 1 });
-connectivitySchema.index({ connected_at: -1 });
+connectivitySchema.index({ disconnected_at: 1 });
 
 export const ConnectivityModel =
   models.Connectivity ||

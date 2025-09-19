@@ -9,6 +9,11 @@ async function start() {
     await server.listen({ host: "0.0.0.0", port: config.app.port });
     server.log.info(`🚀 Server running at http://localhost:${config.app.port}`);
   } catch (err) {
+
+    console.log({
+      error: err,
+      
+    })
     server.log.error(err);
     process.exit(1);
   }

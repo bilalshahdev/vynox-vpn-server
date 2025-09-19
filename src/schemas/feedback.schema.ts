@@ -12,6 +12,7 @@ export const paramsWithIdSchema = {
 
 const dateTime = { type: "string", format: "date-time" } as const;
 const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" } as const;
+const osType = { type: "string", enum: ["android", "ios"] } as const;
 
 const feedbackOutSchema = {
   type: "object",
@@ -24,6 +25,7 @@ const feedbackOutSchema = {
     rating: { type: "number", minimum: 1, maximum: 5 },
     review: { type: "string" },
     additional_data: { type: "object", additionalProperties: true },
+    os_type: osType, // ⬅️ added
     datetime: dateTime,
     created_at: dateTime,
     updated_at: dateTime,
@@ -36,6 +38,7 @@ const feedbackOutSchema = {
     "server_id",
     "rating",
     "review",
+    "os_type", // ⬅️ added
     "datetime",
     "created_at",
     "updated_at",
@@ -51,6 +54,7 @@ export const listFeedbackSchema = {
       server_id: objectId,
       reason: { type: "string" },
       network_type: { type: "string" },
+      os_type: osType, // ⬅️ added
       rating_min: { type: "integer", minimum: 1, maximum: 5 },
       rating_max: { type: "integer", minimum: 1, maximum: 5 },
       from: dateTime,
@@ -121,6 +125,7 @@ export const createFeedbackSchema = {
       rating: { type: "integer", minimum: 1, maximum: 5 },
       review: { type: "string" },
       additional_data: { type: "object", additionalProperties: true },
+      os_type: osType, // ⬅️ added
       datetime: dateTime,
     },
     required: [
@@ -130,6 +135,7 @@ export const createFeedbackSchema = {
       "server_id",
       "rating",
       "review",
+      "os_type", // ⬅️ added
     ],
     additionalProperties: false,
   } as const,

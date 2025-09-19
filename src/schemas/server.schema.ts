@@ -1,39 +1,6 @@
 // src/schemas/server.schema.ts
 import { FromSchema } from "json-schema-to-ts";
-
-const osType = { type: "string", enum: ["android", "ios"] } as const;
-const categoriesEnum = {
-  type: "string",
-  enum: ["gaming", "streaming"],
-} as const;
-
-const commonRequired = [
-  "name",
-  "categories",
-  "country",
-  "city",
-  "country_code",
-  "is_pro",
-  "mode",
-  "ip",
-  "latitude",
-  "longitude",
-  "os_type",
-];
-
-const commonProperties = {
-  name: { type: "string" },
-  categories: { type: "array", items: categoriesEnum, minItems: 1 },
-  country: { type: "string" },
-  city: { type: "string" },
-  country_code: { type: "string" },
-  is_pro: { type: "boolean" },
-  mode: { type: "string", enum: ["test", "live"] },
-  ip: { type: "string" },
-  latitude: { type: "number" },
-  longitude: { type: "number" },
-  os_type: osType,
-};
+import { paginationSchema } from "./common";
 
 // ---------- Shared ----------
 export const paramsWithIdSchema = {
@@ -43,6 +10,12 @@ export const paramsWithIdSchema = {
   },
   required: ["id"],
   additionalProperties: false,
+} as const;
+
+const osType = { type: "string", enum: ["android", "ios"] } as const;
+const categoriesEnum = {
+  type: "string",
+  enum: ["gaming", "streaming"],
 } as const;
 
 const openvpnConfigSchema = {
@@ -72,11 +45,36 @@ const serverFlatBase = {
   type: "object",
   properties: {
     _id: { type: "string" },
-    ...commonProperties,
+    name: { type: "string" },
+    categories: { type: "array", items: categoriesEnum, minItems: 1 },
+    country: { type: "string" },
+    country_code: { type: "string" },
+    flag: { type: "string" }, // e.g., "us.png" (frontend can prefix)
+    city: { type: "string" },
+    is_pro: { type: "boolean" },
+    mode: { type: "string", enum: ["test", "live"] },
+    ip: { type: "string" },
+    latitude: { type: "number" },
+    longitude: { type: "number" },
+    os_type: osType,
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
-  required: ["_id", ...commonRequired, "created_at", "updated_at"],
+  required: [
+    "_id",
+    "name",
+    "categories",
+    "country",
+    "country_code",
+    "flag",
+    "city",
+    "is_pro",
+    "mode",
+    "ip",
+    "latitude",
+    "longitude",
+    "os_type",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -107,44 +105,41 @@ const countryGroupSchema = {
   additionalProperties: false,
 } as const;
 
-export const listServersSchema = {
-  querystring: {
-    type: "object",
-    properties: {
-      os_type: osType, // query-only OS filter
-      page: { type: "integer", minimum: 1, default: 1 },
-      limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
-    },
-    additionalProperties: false,
-  } as const,
-  response: {
-    200: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        pagination: {
-          type: "object",
-          properties: {
-            page: { type: "integer" },
-            limit: { type: "integer" },
-            total: { type: "integer" },
-            pages: { type: "integer" },
-          },
-          required: ["page", "limit", "total", "pages"],
-          additionalProperties: false,
-        },
-        // GROUPED result
-        data: { type: "array", items: countryGroupSchema },
-      },
-      required: ["success", "pagination", "data"],
-      additionalProperties: false,
-    },
+// Shared query schema
+const querySchema = {
+  type: "object",
+  properties: {
+    os_type: osType,
+    mode: { type: "string", enum: ["test", "live"] },
+    page: { type: "integer", minimum: 1, default: 1 },
+    limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+    search: { type: "string" },
   },
+  additionalProperties: false,
 } as const;
 
-export type FromListServersQuery = FromSchema<
-  typeof listServersSchema.querystring
->;
+// Factory function to build list schema
+function createListSchema(dataSchema: any) {
+  return {
+    querystring: querySchema,
+    response: {
+      200: {
+        type: "object",
+        properties: {
+          success: { type: "boolean" },
+          pagination: paginationSchema,
+          data: { type: "array", items: dataSchema },
+        },
+        required: ["success", "pagination", "data"],
+        additionalProperties: false,
+      },
+    },
+  } as const;
+}
+
+// Now just call with the right data shape
+export const listServersSchema = createListSchema(serverListItemSchema);
+export const listGroupedServersSchema = createListSchema(countryGroupSchema);
 
 // ---------- Get by ID (flattened + configs) ----------
 export const getServerByIdSchema = {
@@ -193,14 +188,26 @@ const serverOutSchema = {
     _id: { type: "string" },
     general: {
       ...generalSchema,
-      required: commonRequired,
+      required: [
+        "name",
+        "categories",
+        "country",
+        "city",
+        "country_code",
+        "is_pro",
+        "mode",
+        "ip",
+        "latitude",
+        "longitude",
+        "os_type",
+      ],
     },
     openvpn_config: openvpnConfigSchema,
     wireguard_config: wireguardConfigSchema,
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
-  required: ["_id", "general", "created_at", "updated_at"],
+  required: ["_id", "general"],
   additionalProperties: false,
 } as const;
 
@@ -238,8 +245,6 @@ export const createServerSchema = {
   },
 } as const;
 
-export type FromCreateServerBody = FromSchema<typeof createServerSchema.body>;
-
 // ---------- Update (partial) ----------
 export const updateServerSchema = {
   params: paramsWithIdSchema,
@@ -268,8 +273,6 @@ export const updateServerSchema = {
   },
 } as const;
 
-export type FromUpdateServerBody = FromSchema<typeof updateServerSchema.body>;
-
 // ---------- Mode ----------
 export const updateServerModeSchema = {
   params: paramsWithIdSchema,
@@ -288,8 +291,6 @@ export const updateServerModeSchema = {
     },
   },
 } as const;
-
-export type FromUpdateModeBody = FromSchema<typeof updateServerModeSchema.body>;
 
 // ---------- Is Pro ----------
 export const updateServerIsProSchema = {
@@ -310,10 +311,6 @@ export const updateServerIsProSchema = {
   },
 } as const;
 
-export type FromUpdateIsProBody = FromSchema<
-  typeof updateServerIsProSchema.body
->;
-
 // ---------- OpenVPN Config ----------
 export const updateOpenVPNConfigSchema = {
   params: paramsWithIdSchema,
@@ -330,10 +327,6 @@ export const updateOpenVPNConfigSchema = {
     },
   },
 } as const;
-
-export type FromUpdateOpenVPNConfigBody = FromSchema<
-  typeof updateOpenVPNConfigSchema.body
->;
 
 // ---------- WireGuard Config ----------
 export const updateWireguardConfigSchema = {
@@ -352,9 +345,25 @@ export const updateWireguardConfigSchema = {
   },
 } as const;
 
+export type FromListServersQuery = FromSchema<
+  typeof listServersSchema.querystring
+>;
+
+export type FromCreateServerBody = FromSchema<typeof createServerSchema.body>;
+
+export type FromUpdateServerBody = FromSchema<typeof updateServerSchema.body>;
+
+export type FromUpdateModeBody = FromSchema<typeof updateServerModeSchema.body>;
+
+export type FromUpdateIsProBody = FromSchema<
+  typeof updateServerIsProSchema.body
+>;
+
+export type FromUpdateOpenVPNConfigBody = FromSchema<
+  typeof updateOpenVPNConfigSchema.body
+>;
 export type FromUpdateWireguardConfigBody = FromSchema<
   typeof updateWireguardConfigSchema.body
 >;
 
-// ---------- Exports ----------
 export type FromParamsWithId = FromSchema<typeof paramsWithIdSchema>;

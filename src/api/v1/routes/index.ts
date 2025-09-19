@@ -5,10 +5,12 @@ import feedbackRoutes from "./feedback.routes";
 import connectivityRoutes from "./connectivity.routes";
 import dropdownRoutes from "./dropdown.routes";
 import pageRoutes from "./page.routes";
+import dashboardRoutes from "./dashboard.route";
 
 export default async function usersRoutesV1(app: FastifyInstance) {
   app.get("/", async () => ({ message: "Hello from v1 of fastify" }));
 
+  await app.register(dashboardRoutes, { prefix: "/dashboard" });
   await app.register(serverRoutes, { prefix: "/servers" });
   await app.register(adRoutes, { prefix: "/ads" });
   await app.register(feedbackRoutes, { prefix: "/feedback" });

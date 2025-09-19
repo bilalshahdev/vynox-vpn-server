@@ -15,6 +15,8 @@ import {
 
 export type ServerListFilter = {
   os_type?: "android" | "ios";
+  mode?: "test" | "live";
+  search?: string;
 };
 
 type CacheDeps = {
@@ -74,15 +76,83 @@ export async function listServers(
   // Build DB query
   const q: FilterQuery<IServer> = {};
   if (filter.os_type) q["general.os_type"] = filter.os_type;
+  if (filter.mode) q["general.mode"] = filter.mode;
+
+  if (filter.search) {
+    const regex = new RegExp(filter.search, "i");
+    q.$or = [
+      { "general.name": regex },
+      { "general.country": regex },
+      { "general.city": regex },
+      { "general.ip": regex },
+    ];
+  }
 
   // Cache key (versioned)
   const ver = await getCollectionVersion(redis);
-  const keyPayload = { ...filter, page, limit };
+  const keyPayload = { type: "list", ...filter, page, limit }; // 👈 add type
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
   // Try cache
   const cached = await getJSON<unknown>(redis, listKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log("cache hit (list):", listKey);
+    return cached;
+  }
+
+  // DB hit
+  const cursor = ServerModel.find(q).lean().sort({ created_at: -1 });
+  const total = await ServerModel.countDocuments(q);
+  const docs = await cursor.skip((page - 1) * limit).limit(limit);
+
+  // 🔥 Flatten only (no grouping)
+  const data = docs.map((d) => toListItem(d as any));
+
+  const result = {
+    success: true,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
+    data,
+  };
+
+  // Cache
+  await setJSON(redis, listKey, result, listTtlSec);
+  return result;
+}
+
+export async function listGroupedServers(
+  filter: ServerListFilter,
+  page = 1,
+  limit = 50,
+  deps: CacheDeps = {}
+) {
+  const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
+
+  // Build DB query
+  const q: FilterQuery<IServer> = {};
+  if (filter.os_type) q["general.os_type"] = filter.os_type;
+  if (filter.mode) q["general.mode"] = filter.mode;
+
+  if (filter.search) {
+    const regex = new RegExp(filter.search, "i");
+    q.$or = [
+      { "general.name": regex },
+      { "general.country": regex },
+      { "general.city": regex },
+      { "general.ip": regex },
+    ];
+  }
+
+  // Cache key (versioned)
+  const ver = await getCollectionVersion(redis);
+  const keyPayload = { type: "grouped", ...filter, page, limit }; // 👈 add type
+  const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
+
+  // Try cache
+  const cached = await getJSON<unknown>(redis, listKey);
+  if (cached) {
+    console.log("cache hit (grouped):", listKey);
+    return cached;
+  }
 
   // DB hit
   const cursor = ServerModel.find(q)
@@ -156,6 +226,9 @@ export async function createServer(
     (error as any).statusCode = 409;
     throw error;
   }
+
+  if (payload.general)
+    payload.general.flag = flagOf(payload.general.country_code);
 
   const created = await ServerModel.create(payload as IServer);
   await bumpCollectionVersion(redis); // invalidate lists

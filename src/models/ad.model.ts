@@ -35,4 +35,6 @@ const adSchema = new Schema<IAd>(
   }
 );
 
+adSchema.index({ os_type: 1, position: 1, status: 1, created_at: -1 });
+
 export const AdModel = models.Ad || model<IAd>("Ad", adSchema);
