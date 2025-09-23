@@ -19,27 +19,20 @@ const feedbackOutSchema = {
   properties: {
     _id: { type: "string" },
     reason: { type: "string" },
-    network_type: { type: "string" },
-    requested_server: { type: "string" },
     server_id: objectId,
     rating: { type: "number", minimum: 1, maximum: 5 },
     review: { type: "string" },
-    additional_data: { type: "object", additionalProperties: true },
-    os_type: osType, // ⬅️ added
-    datetime: dateTime,
+    os_type: osType,
     created_at: dateTime,
     updated_at: dateTime,
   },
   required: [
     "_id",
     "reason",
-    "network_type",
-    "requested_server",
     "server_id",
     "rating",
     "review",
-    "os_type", // ⬅️ added
-    "datetime",
+    "os_type",
     "created_at",
     "updated_at",
   ],
@@ -53,12 +46,8 @@ export const listFeedbackSchema = {
     properties: {
       server_id: objectId,
       reason: { type: "string" },
-      network_type: { type: "string" },
-      os_type: osType, // ⬅️ added
-      rating_min: { type: "integer", minimum: 1, maximum: 5 },
-      rating_max: { type: "integer", minimum: 1, maximum: 5 },
-      from: dateTime,
-      to: dateTime,
+      os_type: osType,
+      rating: { type: "integer", minimum: 1, maximum: 5 },
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
     },
@@ -119,24 +108,13 @@ export const createFeedbackSchema = {
     type: "object",
     properties: {
       reason: { type: "string" },
-      network_type: { type: "string" },
       requested_server: { type: "string" },
       server_id: objectId,
       rating: { type: "integer", minimum: 1, maximum: 5 },
       review: { type: "string" },
-      additional_data: { type: "object", additionalProperties: true },
-      os_type: osType, // ⬅️ added
-      datetime: dateTime,
+      os_type: osType,
     },
-    required: [
-      "reason",
-      "network_type",
-      "requested_server",
-      "server_id",
-      "rating",
-      "review",
-      "os_type", // ⬅️ added
-    ],
+    required: ["reason", "server_id", "rating", "review", "os_type"],
     additionalProperties: false,
   } as const,
   response: {

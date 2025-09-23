@@ -1,6 +1,6 @@
 // src/services/feedback.service.ts
-import type Redis from "ioredis";
 import crypto from "crypto";
+import type Redis from "ioredis";
 import { FilterQuery, Types } from "mongoose";
 import { FeedbackModel, IFeedback } from "../models/feedback.model";
 
@@ -66,24 +66,18 @@ async function delKey(redis: Redis | undefined, key: string) {
 export type FeedbackListFilter = {
   server_id?: string;
   reason?: string;
-  network_type?: string;
-  os_type?: "android" | "ios"; // ⬅️ added
-  rating_min?: number;
-  rating_max?: number;
-  from?: string; // ISO date-time for datetime >= from
-  to?: string; // ISO date-time for datetime <= to
+  os_type?: "android" | "ios"; //
+  rating?: number;
+  from?: string;
+  to?: string;
 };
 
 export type CreateFeedbackDTO = {
   reason: string;
-  network_type: string;
-  requested_server: string;
-  server_id: string; // string in payload
+  server_id: string;
   rating: number;
   review: string;
-  additional_data?: Record<string, unknown>;
-  os_type: "android" | "ios"; // ⬅️ added
-  datetime?: string | Date;
+  os_type: "android" | "ios";
 };
 
 type CacheDeps = {
@@ -115,13 +109,13 @@ export async function listFeedback(
   const q: FilterQuery<IFeedback> = {};
   if (filter.server_id) q.server_id = toObjectId(filter.server_id);
   if (filter.reason) q.reason = filter.reason;
-  if (filter.network_type) q.network_type = filter.network_type;
-  if (filter.os_type) q.os_type = filter.os_type; // ⬅️ added
+  if (filter.os_type) q.os_type = filter.os_type;
+  if (filter.rating) q.rating = filter.rating;
 
-  if (filter.rating_min != null || filter.rating_max != null) {
-    q.rating = {};
-    if (filter.rating_min != null) (q.rating as any).$gte = filter.rating_min;
-    if (filter.rating_max != null) (q.rating as any).$lte = filter.rating_max;
+  if (filter.from || filter.to) {
+    q.datetime = {};
+    if (filter.from) (q.datetime as any).$gte = new Date(filter.from);
+    if (filter.rating != null) (q.rating as any).$lte = filter.rating;
   }
   if (filter.from || filter.to) {
     q.datetime = {};
@@ -173,14 +167,10 @@ export async function createFeedback(
   const { redis } = deps;
   const created = await FeedbackModel.create({
     reason: dto.reason,
-    network_type: dto.network_type,
-    requested_server: dto.requested_server,
     server_id: toObjectId(dto.server_id),
     rating: dto.rating,
     review: dto.review,
-    additional_data: dto.additional_data,
-    os_type: dto.os_type, // ⬅️ added
-    datetime: dto.datetime ? new Date(dto.datetime) : new Date(),
+    os_type: dto.os_type,
   });
   await bumpCollectionVersion(redis);
   return created.toObject();

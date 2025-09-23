@@ -11,7 +11,13 @@ export interface IPage extends Document {
 
 const pageSchema = new Schema<IPage>(
   {
-    type: { type: String, required: true, unique: true },
+    type: {
+      type: String,
+      required: true,
+      set: (v: string) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+      index: true,
+      unique: true,
+    },
     title: { type: String, required: true },
     description: { type: String, required: true }, // HTML
   },

@@ -1,4 +1,3 @@
-// src/services/connectivity.service.ts
 import type Redis from "ioredis";
 import crypto from "crypto";
 import { FilterQuery } from "mongoose";
@@ -10,6 +9,7 @@ const CacheKeys = {
   ver: () => `${NS}:ver`,
   list: (ver: string, hash: string) => `${NS}:${ver}:list:${hash}`,
   byId: (id: string) => `${NS}:id:${id}`,
+  openByPair: (u: string, s: string) => `${NS}:open:${u}:${s}`,
 };
 
 async function getCollectionVersion(redis?: Redis): Promise<string> {
@@ -74,10 +74,12 @@ type CacheDeps = {
   redis?: Redis;
   listTtlSec?: number; // default 30
   idTtlSec?: number; // default 120
+  openPairTtlSec?: number; // default 15
 };
 
-const DEFAULT_LIST_TTL = 30; // connectivity is high-churn; keep short
+const DEFAULT_LIST_TTL = 30;
 const DEFAULT_ID_TTL = 120;
+const DEFAULT_OPEN_PAIR_TTL = 15;
 
 export async function listConnectivity(
   filter: ConnectivityListFilter,
@@ -96,12 +98,11 @@ export async function listConnectivity(
     if (filter.to) (q.connected_at as any).$lte = new Date(filter.to);
   }
 
-  // versioned list cache key
   const ver = await getCollectionVersion(redis);
   const keyPayload = { ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
-  const cached = await getJSON<unknown>(redis, listKey);
+  const cached = await getJSON<any>(redis, listKey);
   if (cached) return cached;
 
   const cursor = ConnectivityModel.find(q)
@@ -124,7 +125,6 @@ export async function listConnectivity(
 export async function getConnectivityById(id: string, deps: CacheDeps = {}) {
   const { redis, idTtlSec = DEFAULT_ID_TTL } = deps;
   const idKey = CacheKeys.byId(id);
-
   const cached = await getJSON<any>(redis, idKey);
   if (cached) return cached;
 
@@ -135,74 +135,98 @@ export async function getConnectivityById(id: string, deps: CacheDeps = {}) {
   return doc;
 }
 
-export async function createConnectivity(
-  payload: {
-    user_id: string;
-    server_id: string;
-    connected_at: string | Date;
-    disconnected_at?: string | Date | null;
-  },
+/** Returns the currently open session for (user, server), or null */
+export async function getOpenByPair(
+  payload: { user_id: string; server_id: string },
   deps: CacheDeps = {}
 ) {
-  const { redis } = deps;
-  const created = await ConnectivityModel.create({
+  const { redis, openPairTtlSec = DEFAULT_OPEN_PAIR_TTL } = deps;
+  const key = CacheKeys.openByPair(payload.user_id, payload.server_id);
+  const cached = await getJSON<any>(redis, key);
+  if (cached !== null) return cached;
+
+  const open = await ConnectivityModel.findOne({
     user_id: payload.user_id,
     server_id: payload.server_id,
-    connected_at: new Date(payload.connected_at),
-    disconnected_at:
-      payload.disconnected_at == null
-        ? null
-        : new Date(payload.disconnected_at),
-  });
-  await bumpCollectionVersion(redis); // invalidate lists
-  return created.toObject();
+    $or: [{ disconnected_at: null }, { disconnected_at: { $exists: false } }],
+  }).lean();
+
+  await setJSON(redis, key, open, openPairTtlSec);
+  return open;
 }
 
-/**
- * Mark disconnected NOW iff:
- *  - exists
- *  - disconnected_at is null/undefined
- *  - connected_at <= now (no future connect time)
- */
-export async function markDisconnectedNow(id: string, deps: CacheDeps = {}) {
+/** Creates a new open session if none exists. No transactions. */
+export async function connect(
+  payload: { user_id: string; server_id: string },
+  deps: CacheDeps = {}
+): Promise<{ status: "created"; data: any } | { status: "conflict" }> {
   const { redis } = deps;
   const now = new Date();
 
-  const updated = await ConnectivityModel.findOneAndUpdate(
+  // Soft check first (fast path)
+  const existing = await ConnectivityModel.exists({
+    user_id: payload.user_id,
+    server_id: payload.server_id,
+    $or: [{ disconnected_at: null }, { disconnected_at: { $exists: false } }],
+  });
+  if (existing) return { status: "conflict" };
+
+  try {
+    const created = await ConnectivityModel.create({
+      user_id: payload.user_id,
+      server_id: payload.server_id,
+      connected_at: now,
+      disconnected_at: null,
+    });
+
+    // Invalidate caches
+    await bumpCollectionVersion(redis);
+    await delKey(
+      redis,
+      CacheKeys.openByPair(payload.user_id, payload.server_id)
+    );
+
+    return { status: "created", data: created.toObject() };
+  } catch (err: any) {
+    // Handle race via unique index on (user_id, server_id, disconnected_at: null)
+    if (err?.code === 11000) {
+      return { status: "conflict" };
+    }
+    throw err;
+  }
+}
+
+/** Closes the open session for (user, server) by setting disconnected_at=now. */
+export async function disconnect(
+  payload: { user_id: string; server_id: string },
+  deps: CacheDeps = {}
+) {
+  const { redis } = deps;
+  const now = new Date();
+
+  // Return a Document (no .lean()), then convert to POJO after cache work.
+  const updatedDoc = await ConnectivityModel.findOneAndUpdate(
     {
-      _id: id,
+      user_id: payload.user_id,
+      server_id: payload.server_id,
       $or: [{ disconnected_at: null }, { disconnected_at: { $exists: false } }],
       connected_at: { $lte: now },
     },
     { $set: { disconnected_at: now } },
     { new: true, runValidators: true }
-  ).lean();
+  );
 
-  if (updated) {
-    await delKey(redis, CacheKeys.byId(id)); // drop per-id cache
-    await bumpCollectionVersion(redis); // invalidate lists
-  }
-  return updated; // null if constraints fail or not found
-}
-
-export async function updateDisconnectedAt(
-  id: string,
-  value: string | Date,
-  deps: CacheDeps = {}
-) {
-  // If you still need the "manual" variant, keep invalidation consistent.
-  const { redis } = deps;
-  const doc = await ConnectivityModel.findByIdAndUpdate(
-    id,
-    { $set: { disconnected_at: new Date(value) } },
-    { new: true, runValidators: true }
-  ).lean();
-
-  if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
+  if (updatedDoc) {
     await bumpCollectionVersion(redis);
+    await delKey(
+      redis,
+      CacheKeys.openByPair(payload.user_id, payload.server_id)
+    );
+    await delKey(redis, CacheKeys.byId(String(updatedDoc._id)));
+    return updatedDoc.toObject(); // keep your service contract returning plain JSON
   }
-  return doc;
+
+  return null; // no open session found
 }
 
 export async function deleteConnectivity(id: string, deps: CacheDeps = {}) {

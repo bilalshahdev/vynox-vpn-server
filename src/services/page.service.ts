@@ -1,7 +1,7 @@
 // src/services/page.service.ts
 import crypto from "crypto";
 import type Redis from "ioredis";
-import { FilterQuery, UpdateQuery } from "mongoose";
+import { FilterQuery, Types, UpdateQuery } from "mongoose";
 import { IPage, PageModel } from "../models/page.model";
 
 /** ---------- Cache helpers (scoped to Pages) ---------- */
@@ -154,11 +154,24 @@ export async function createPage(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
+  const normType = payload.type.trim().toLowerCase();
+
+  // preflight check to provide clean 409 and avoid duplicate inserts in race-free majority cases
+  const already = await PageModel.exists({ type: normType });
+  if (already) {
+    const err: any = new Error("A page with this type already exists.");
+    err.statusCode = 409;
+    throw err;
+  }
+
   try {
-    const created = await PageModel.create(payload as IPage);
-    // invalidate lists; also nuke potential stale type key (shouldn't exist due to unique, but safe)
+    const created = await PageModel.create({
+      ...payload,
+      type: normType, // setter would do it anyway, but being explicit helps readability
+    } as IPage);
+
     await bumpCollectionVersion(redis);
-    await delKey(redis, CacheKeys.byType(payload.type));
+    await delKey(redis, CacheKeys.byType(created.type)); // normalized
     return created.toObject();
   } catch (err: any) {
     if (err?.code === 11000) {
@@ -169,6 +182,25 @@ export async function createPage(
   }
 }
 
+function normalizeType(v: unknown) {
+  return typeof v === "string" ? v.trim().toLowerCase() : undefined;
+}
+
+function applyNormalizedType(update: UpdateQuery<IPage>) {
+  // Capture any incoming 'type' from either direct path or $set
+  const raw =
+    (update as any).type ?? ((update as any).$set && (update as any).$set.type);
+
+  const next = normalizeType(raw);
+  if (!next) return undefined;
+
+  // Write it back so DB receives normalized value
+  if ((update as any).type !== undefined) (update as any).type = next;
+  if ((update as any).$set?.type !== undefined)
+    (update as any).$set.type = next;
+
+  return next;
+}
 export async function updatePage(
   id: string,
   update: UpdateQuery<IPage>,
@@ -177,9 +209,28 @@ export async function updatePage(
   const { redis } = deps;
   try {
     const before = await PageModel.findById(id).lean<PageLean | null>();
+    if (!before) return null;
+
+    // Normalize incoming type (if provided)
+    const nextType = applyNormalizedType(update);
+
+    // Preflight: if changing type, ensure uniqueness (excluding this doc)
+    if (nextType && nextType !== before.type) {
+      const exists = await PageModel.exists({
+        type: nextType,
+        _id: { $ne: new Types.ObjectId(id) },
+      });
+      if (exists) {
+        const err: any = new Error("A page with this type already exists.");
+        err.statusCode = 409;
+        throw err;
+      }
+    }
+
     const doc = await PageModel.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
+      context: "query", // ensure validators apply in update
     }).lean<PageLean | null>();
 
     if (doc) {
@@ -190,6 +241,7 @@ export async function updatePage(
     }
     return doc;
   } catch (err: any) {
+    // Final guard if a race sneaks past the preflight
     if (err?.code === 11000) {
       err.statusCode = 409;
       err.message = "A page with this type already exists.";

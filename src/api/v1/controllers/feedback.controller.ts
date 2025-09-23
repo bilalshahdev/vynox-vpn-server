@@ -14,12 +14,9 @@ export async function list(
   const {
     server_id,
     reason,
-    network_type,
-    os_type, // ⬅️ added
-    rating_min,
-    rating_max,
-    from,
-    to,
+    os_type,
+    rating,
+
     page = 1,
     limit = 50,
   } = req.query;
@@ -27,12 +24,8 @@ export async function list(
     {
       server_id,
       reason,
-      network_type,
       os_type,
-      rating_min,
-      rating_max,
-      from,
-      to,
+      rating,
     },
     page,
     limit,

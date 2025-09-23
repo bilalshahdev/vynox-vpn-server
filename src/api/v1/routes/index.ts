@@ -13,7 +13,7 @@ export default async function usersRoutesV1(app: FastifyInstance) {
   await app.register(dashboardRoutes, { prefix: "/dashboard" });
   await app.register(serverRoutes, { prefix: "/servers" });
   await app.register(adRoutes, { prefix: "/ads" });
-  await app.register(feedbackRoutes, { prefix: "/feedback" });
+  await app.register(feedbackRoutes, { prefix: "/feedbacks" });
   await app.register(connectivityRoutes, { prefix: "/connectivity" });
   await app.register(dropdownRoutes, { prefix: "/dropdowns" });
   await app.register(pageRoutes, { prefix: "/pages" });

@@ -28,12 +28,6 @@ type CacheDeps = {
 const DEFAULT_LIST_TTL = 60;
 const DEFAULT_ID_TTL = 300;
 
-// Helper: flag filename from country_code (frontend can prefix URL)
-function flagOf(country_code?: string) {
-  return country_code ? `${country_code.toLowerCase()}.png` : "";
-}
-
-// Transform DB doc -> flattened list item (without VPN configs)
 function toListItem(doc: IServer & { _id: any }) {
   const g = doc.general;
   return {
@@ -55,7 +49,6 @@ function toListItem(doc: IServer & { _id: any }) {
   };
 }
 
-// Transform DB doc -> flattened by-id item (includes VPN configs)
 function toByIdItem(doc: IServer & { _id: any }) {
   const base = toListItem(doc);
   return {
@@ -227,8 +220,9 @@ export async function createServer(
     throw error;
   }
 
-  if (payload.general)
+  if (payload.general) {
     payload.general.flag = flagOf(payload.general.country_code);
+  }
 
   const created = await ServerModel.create(payload as IServer);
   await bumpCollectionVersion(redis); // invalidate lists
@@ -241,9 +235,36 @@ export async function updateServer(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
+
+  // 1) Normalize nested `general` to $set paths (safe updates)
+  update = normalizeGeneralToSet(update);
+
+  // 2) If IP is being changed, enforce uniqueness excluding current doc
+  const nextIP = extractUpdatedIP(update);
+  if (typeof nextIP === "string" && nextIP.trim().length > 0) {
+    const conflict = await ServerModel.exists({
+      _id: { $ne: id },
+      "general.ip": nextIP,
+    });
+    if (conflict) {
+      const err = new Error("IP already in use");
+      (err as any).statusCode = 409;
+      throw err;
+    }
+  }
+
+  // 3) If country_code is present, set/refresh the flag accordingly
+  const nextCountryCode = extractUpdatedCountryCode(update);
+  if (nextCountryCode) {
+    if (!(update as any).$set) (update as any).$set = {};
+    (update as any).$set["general.flag"] = flagOf(nextCountryCode);
+  }
+
+  // 4) Perform update
   const doc = await ServerModel.findByIdAndUpdate(id, update, {
     new: true,
     runValidators: true,
+    context: "query", // ensure validators for update paths
   }).lean();
 
   if (doc) {
@@ -348,4 +369,34 @@ export async function deleteServer(id: string, deps: CacheDeps = {}) {
     await bumpCollectionVersion(redis);
   }
   return !!res;
+}
+
+function flagOf(country_code?: string) {
+  return country_code ? `${country_code.toLowerCase()}.png` : "";
+}
+
+function extractUpdatedCountryCode(
+  update: UpdateQuery<IServer>
+): string | undefined {
+  const nested = (update as any)?.general?.country_code;
+  const setStyle = (update as any)?.$set?.["general.country_code"];
+  return nested ?? setStyle;
+}
+function extractUpdatedIP(update: UpdateQuery<IServer>): string | undefined {
+  const nested = (update as any)?.general?.ip;
+  const setStyle = (update as any)?.$set?.["general.ip"];
+  return nested ?? setStyle;
+}
+
+/** Normalize `general: { ... }` into `$set` to avoid overwriting the whole subdoc */
+function normalizeGeneralToSet(update: UpdateQuery<IServer>) {
+  const general = (update as any).general;
+  if (general && typeof general === "object") {
+    if (!(update as any).$set) (update as any).$set = {};
+    for (const [k, v] of Object.entries(general)) {
+      (update as any).$set[`general.${k}`] = v;
+    }
+    delete (update as any).general;
+  }
+  return update;
 }

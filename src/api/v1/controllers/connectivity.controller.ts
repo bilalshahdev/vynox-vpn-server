@@ -1,9 +1,10 @@
-// src/controllers/connectivity.controller.ts
 import { FastifyReply, FastifyRequest } from "fastify";
 import {
   FromListConnectivityQuery,
   FromParamsWithId,
-  FromCreateConnectivityBody,
+  FromConnectBody,
+  FromDisconnectBody,
+  FromOpenByPairQuery,
 } from "../../../schemas/connectivity.schema";
 import * as S from "../../../services/connectivity.service";
 
@@ -35,39 +36,58 @@ export async function getById(
   return reply.send({ success: true, data: item });
 }
 
-export async function create(
-  req: FastifyRequest<{ Body: FromCreateConnectivityBody }>,
+export async function getOpenByPair(
+  req: FastifyRequest<{ Querystring: FromOpenByPairQuery }>,
   reply: FastifyReply
 ) {
-  const item = await S.createConnectivity(req.body, {
-    redis: req.server.redis,
-  });
-  return reply.code(201).send({ success: true, data: item });
+  const { user_id, server_id } = req.query;
+  const item = await S.getOpenByPair({ user_id, server_id }, { redis: req.server.redis });
+  return reply.send({ success: true, data: item }); // data can be null if none
 }
 
-// PATCH /connectivity/:id/disconnected-at -> sets NOW (no body)
-export async function updateDisconnectedAt(
-  req: FastifyRequest<{ Params: FromParamsWithId }>,
+/** POST /connectivity/connect
+ * Creates a new open record for (user, server) with connected_at=now.
+ * If an open record already exists -> 409.
+ */
+export async function connect(
+  req: FastifyRequest<{ Body: FromConnectBody }>,
   reply: FastifyReply
 ) {
-  const item = await S.markDisconnectedNow(req.params.id, {
-    redis: req.server.redis,
-  });
-  if (item) return reply.send({ success: true, data: item });
+  const { user_id, server_id } = req.body;
 
-  const exists = await S.getConnectivityById(req.params.id, {
-    redis: req.server.redis,
-  });
-  if (!exists)
-    return reply
-      .code(404)
-      .send({ success: false, message: "Connectivity not found" });
+  const result = await S.connect({ user_id, server_id }, { redis: req.server.redis });
 
-  return reply.code(409).send({
-    success: false,
-    message:
-      "Cannot set disconnected_at: already set or connected_at is in the future.",
-  });
+  if (result.status === "conflict") {
+    return reply.code(409).send({
+      success: false,
+      message: "Already connected: an open session exists for this user and server.",
+    });
+  }
+
+  return reply.code(201).send({ success: true, data: result.data });
+}
+
+/** POST /connectivity/disconnect
+ * Marks disconnected_at=now for the open record of (user, server).
+ * If no open record exists -> 409.
+ */
+export async function disconnect(
+  req: FastifyRequest<{ Body: FromDisconnectBody }>,
+  reply: FastifyReply
+) {
+  const { user_id, server_id } = req.body;
+
+  const item = await S.disconnect({ user_id, server_id }, { redis: req.server.redis });
+
+  if (!item) {
+    return reply.code(409).send({
+      success: false,
+      message:
+        "Cannot disconnect: no open session exists for this user and server.",
+    });
+  }
+
+  return reply.send({ success: true, data: item });
 }
 
 export async function remove(

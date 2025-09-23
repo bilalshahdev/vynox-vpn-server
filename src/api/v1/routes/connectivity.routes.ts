@@ -1,12 +1,12 @@
-// src/routes/connectivity.route.ts
 import { FastifyInstance } from "fastify";
 import * as ConnectivityController from "../controllers/connectivity.controller";
 import {
   listConnectivitySchema,
   getConnectivityByIdSchema,
-  createConnectivitySchema,
-  updateDisconnectedAtSchema,
+  connectSchema,
+  disconnectSchema,
   paramsWithIdSchema,
+  openByPairQuerySchema,
 } from "../../../schemas/connectivity.schema";
 
 export default async function connectivityRoutes(app: FastifyInstance) {
@@ -28,18 +28,25 @@ export default async function connectivityRoutes(app: FastifyInstance) {
     ConnectivityController.getById
   );
 
-  // POST /connectivity
-  app.post(
-    "/",
-    { schema: createConnectivitySchema },
-    ConnectivityController.create
+  // GET /connectivity/open?user_id&server_id (optional convenience)
+  app.get(
+    "/open",
+    { schema: openByPairQuerySchema },
+    ConnectivityController.getOpenByPair
   );
 
-  // PATCH /connectivity/:id/disconnected-at
-  app.patch(
-    "/:id/disconnected-at",
-    { schema: updateDisconnectedAtSchema },
-    ConnectivityController.updateDisconnectedAt
+  // POST /connectivity/connect
+  app.post(
+    "/connect",
+    { schema: connectSchema },
+    ConnectivityController.connect
+  );
+
+  // POST /connectivity/disconnect
+  app.post(
+    "/disconnect",
+    { schema: disconnectSchema },
+    ConnectivityController.disconnect
   );
 
   // DELETE /connectivity/:id

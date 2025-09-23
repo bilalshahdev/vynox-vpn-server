@@ -1,4 +1,3 @@
-// src/schemas/connectivity.schema.ts
 import { FromSchema } from "json-schema-to-ts";
 
 export const paramsWithIdSchema = {
@@ -11,7 +10,7 @@ export const paramsWithIdSchema = {
 } as const;
 
 const dateTime = { type: "string", format: "date-time" } as const;
-const dateTimeOrNull = { anyOf: [dateTime, { type: "null" }] } as const; // ⬅️
+const dateTimeOrNull = { anyOf: [dateTime, { type: "null" }] } as const;
 
 const connectivityOutSchema = {
   type: "object",
@@ -20,7 +19,7 @@ const connectivityOutSchema = {
     user_id: { type: "string" },
     server_id: { type: "string" },
     connected_at: dateTime,
-    disconnected_at: dateTimeOrNull, // ⬅️ can be null until disconnected
+    disconnected_at: dateTimeOrNull,
     created_at: dateTime,
     updated_at: dateTime,
   },
@@ -99,17 +98,15 @@ export const getConnectivityByIdSchema = {
 
 export type FromParamsWithId = FromSchema<typeof paramsWithIdSchema>;
 
-// ---------- Create ----------
-export const createConnectivitySchema = {
+// ---------- Connect (server timestamps, no transactions) ----------
+export const connectSchema = {
   body: {
     type: "object",
     properties: {
       user_id: { type: "string" },
       server_id: { type: "string" },
-      connected_at: dateTime,
-      disconnected_at: dateTimeOrNull, // ⬅️ optional nullable
     },
-    required: ["user_id", "server_id", "connected_at"], // ⬅️ removed disconnected_at from required
+    required: ["user_id", "server_id"],
     additionalProperties: false,
   } as const,
   response: {
@@ -117,29 +114,6 @@ export const createConnectivitySchema = {
       type: "object",
       properties: { success: { type: "boolean" }, data: connectivityOutSchema },
       required: ["success", "data"],
-      additionalProperties: false,
-    },
-  },
-} as const;
-
-export type FromCreateConnectivityBody = FromSchema<
-  typeof createConnectivitySchema.body
->;
-
-// ---------- Update disconnected_at (no body; server sets now) ----------
-export const updateDisconnectedAtSchema = {
-  params: paramsWithIdSchema,
-  response: {
-    200: {
-      type: "object",
-      properties: { success: { type: "boolean" }, data: connectivityOutSchema },
-      required: ["success", "data"],
-      additionalProperties: false,
-    },
-    404: {
-      type: "object",
-      properties: { success: { type: "boolean" }, message: { type: "string" } },
-      required: ["success", "message"],
       additionalProperties: false,
     },
     409: {
@@ -151,5 +125,60 @@ export const updateDisconnectedAtSchema = {
   },
 } as const;
 
-// Kept for type imports (no body now)
-export type FromUpdateDisconnectedAtBody = { _?: never };
+export type FromConnectBody = FromSchema<typeof connectSchema.body>;
+
+// ---------- Disconnect (by pair, server sets now) ----------
+export const disconnectSchema = {
+  body: {
+    type: "object",
+    properties: {
+      user_id: { type: "string" },
+      server_id: { type: "string" },
+    },
+    required: ["user_id", "server_id"],
+    additionalProperties: false,
+  } as const,
+  response: {
+    200: {
+      type: "object",
+      properties: { success: { type: "boolean" }, data: connectivityOutSchema },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+    409: {
+      type: "object",
+      properties: { success: { type: "boolean" }, message: { type: "string" } },
+      required: ["success", "message"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+export type FromDisconnectBody = FromSchema<typeof disconnectSchema.body>;
+
+// ---------- Open by pair (optional) ----------
+export const openByPairQuerySchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      user_id: { type: "string" },
+      server_id: { type: "string" },
+    },
+    required: ["user_id", "server_id"],
+    additionalProperties: false,
+  } as const,
+  response: {
+    200: {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        // null if no open record
+        data: { anyOf: [connectivityOutSchema, { type: "null" }] },
+      },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+export type FromOpenByPairQuery = FromSchema<typeof openByPairQuerySchema.querystring>;
