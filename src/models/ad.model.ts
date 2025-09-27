@@ -2,11 +2,11 @@
 import { Schema, model, Document, models } from "mongoose";
 
 export interface IAd extends Document {
-  type: "banner" | "interstitial" | "reward";
-  position: "home" | "splash" | "server" | "report";
+  type: string;
+  position: string;
   status: boolean;
-  ad_id:  string;
-  os_type: "android" | "ios";
+  ad_id: string;
+  os_type: "android" | "ios" | "both";
   created_at: Date;
   updated_at: Date;
 }
@@ -15,17 +15,15 @@ const adSchema = new Schema<IAd>(
   {
     type: {
       type: String,
-      enum: ["banner", "interstitial", "reward"],
       required: true,
     },
     position: {
       type: String,
-      enum: ["home", "splash", "server", "report"],
       required: true,
     },
     status: { type: Boolean, default: true },
     ad_id: { type: String },
-    os_type: { type: String, enum: ["android", "ios"], required: true },
+    os_type: { type: String, enum: ["android", "ios", "both"], required: true },
   },
   {
     timestamps: {

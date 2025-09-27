@@ -14,7 +14,7 @@ import {
 } from "../utils/cache";
 
 export type ServerListFilter = {
-  os_type?: "android" | "ios";
+  os_type?: "android" | "ios" | "both";
   mode?: "test" | "live";
   search?: string;
 };

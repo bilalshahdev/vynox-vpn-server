@@ -11,22 +11,18 @@ export const paramsWithIdSchema = {
   additionalProperties: false,
 } as const;
 
-const osType = { type: "string", enum: ["android", "ios"] } as const;
-const adType = {
-  type: "string",
-  enum: ["banner", "interstitial", "reward"],
-} as const;
-const adPosition = {
-  type: "string",
-  enum: ["home", "splash", "server", "report"],
-} as const;
+// Keep OS as compile-time enum.
+const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
+
+// For server-driven dropdowns: just require non-empty strings.
+const nonEmptyString = { type: "string", minLength: 1 } as const;
 
 const adOutSchema = {
   type: "object",
   properties: {
     _id: { type: "string" },
-    type: adType,
-    position: adPosition,
+    type: nonEmptyString,
+    position: nonEmptyString,
     status: { type: "boolean" },
     ad_id: { type: "string" },
     os_type: osType,
@@ -50,9 +46,9 @@ export const listAdsSchema = {
   querystring: {
     type: "object",
     properties: {
-      os_type: osType, // <-- single source of truth for OS filtering
-      type: adType,
-      position: adPosition,
+      os_type: osType,
+      type: nonEmptyString, // string (optional)
+      position: nonEmptyString, // string (optional)
       status: { type: "boolean" },
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
@@ -109,10 +105,10 @@ export const createAdSchema = {
   body: {
     type: "object",
     properties: {
-      type: adType,
-      position: adPosition,
+      type: nonEmptyString, // string required
+      position: nonEmptyString, // string required
       status: { type: "boolean" },
-      ad_id: { type: "string" },
+      ad_id: nonEmptyString, // keep non-empty constraint
       os_type: osType,
     },
     required: ["type", "position", "os_type"],
@@ -136,10 +132,10 @@ export const updateAdSchema = {
   body: {
     type: "object",
     properties: {
-      type: adType,
-      position: adPosition,
+      type: nonEmptyString, // string (optional)
+      position: nonEmptyString, // string (optional)
       status: { type: "boolean" },
-      ad_id: { type: "string" },
+      ad_id: nonEmptyString,
       os_type: osType,
     },
     additionalProperties: false,

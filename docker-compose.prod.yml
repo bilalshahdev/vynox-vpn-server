@@ -1,18 +1,23 @@
 services:
   app:
-    build:
-      context: .
-      target: prod # 👈 use prod stage
-    container_name: fastify_app
+    image: bilalshah110/vynox-vpn-server-app:1.0.0
+    container_name: vynox_server
     ports:
-      - "3333:3333"
+      - "2025:2025"
     env_file:
-      - .env.production
+      - ./.env.production
     depends_on:
       - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(process.env.PORT||2025).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:latest
-    container_name: fastify_redis
+    container_name: vynox_redis
     ports:
       - "6379:6379"
+    restart: unless-stopped

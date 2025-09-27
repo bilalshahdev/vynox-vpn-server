@@ -66,7 +66,7 @@ async function delKey(redis: Redis | undefined, key: string) {
 export type FeedbackListFilter = {
   server_id?: string;
   reason?: string;
-  os_type?: "android" | "ios"; //
+  os_type?: "android" | "ios" | "both"; //
   rating?: number;
   from?: string;
   to?: string;
@@ -77,7 +77,7 @@ export type CreateFeedbackDTO = {
   server_id: string;
   rating: number;
   review: string;
-  os_type: "android" | "ios";
+  os_type: "android" | "ios" | "both";
 };
 
 type CacheDeps = {

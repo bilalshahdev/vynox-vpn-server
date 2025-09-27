@@ -12,7 +12,7 @@ export const paramsWithIdSchema = {
   additionalProperties: false,
 } as const;
 
-const osType = { type: "string", enum: ["android", "ios"] } as const;
+const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
 const categoriesEnum = {
   type: "string",
   enum: ["gaming", "streaming"],
@@ -345,9 +345,7 @@ export const updateWireguardConfigSchema = {
   },
 } as const;
 
-export type FromListServersQuery = FromSchema<
-  typeof listServersSchema.querystring
->;
+export type FromListServersQuery = FromSchema<typeof querySchema>;
 
 export type FromCreateServerBody = FromSchema<typeof createServerSchema.body>;
 

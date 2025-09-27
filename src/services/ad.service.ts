@@ -64,9 +64,9 @@ async function delKey(redis: Redis | undefined, key: string) {
 
 /** ---------- Service API ---------- */
 export type AdListFilter = {
-  os_type?: "android" | "ios";
-  type?: "banner" | "interstitial" | "reward";
-  position?: "home" | "splash" | "server" | "report";
+  os_type?: "android" | "ios" | "both";
+  type?: string;
+  position?: string;
   status?: boolean;
 };
 

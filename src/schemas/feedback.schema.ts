@@ -12,7 +12,7 @@ export const paramsWithIdSchema = {
 
 const dateTime = { type: "string", format: "date-time" } as const;
 const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" } as const;
-const osType = { type: "string", enum: ["android", "ios"] } as const;
+const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
 
 const feedbackOutSchema = {
   type: "object",
