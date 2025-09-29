@@ -1,28 +1,28 @@
 // src/services/server.service.ts
 import type Redis from "ioredis";
 import { FilterQuery, UpdateQuery } from "mongoose";
-import { ServerModel, IServer } from "../models/server.model";
+import { IServer, ServerModel } from "../models/server.model";
 import {
-  CacheKeys,
-  getCollectionVersion,
   bumpCollectionVersion,
-  stableStringify,
-  hashKey,
+  CacheKeys,
+  del,
+  getCollectionVersion,
   getJSON,
+  hashKey,
   setJSON,
-  del as delKey,
+  stableStringify,
 } from "../utils/cache";
 
 export type ServerListFilter = {
-  os_type?: "android" | "ios" | "both";
+  os_type?: "android" | "ios"
   mode?: "test" | "live";
   search?: string;
 };
 
 type CacheDeps = {
   redis?: Redis;
-  listTtlSec?: number; // default 60
-  idTtlSec?: number; // default 300
+  listTtlSec?: number;
+  idTtlSec?: number;
 };
 
 const DEFAULT_LIST_TTL = 60;
@@ -58,21 +58,27 @@ function toByIdItem(doc: IServer & { _id: any }) {
   };
 }
 
-export async function listServers(
-  filter: ServerListFilter,
-  page = 1,
-  limit = 50,
-  deps: CacheDeps = {}
-) {
-  const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
-
-  // Build DB query
+function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
   const q: FilterQuery<IServer> = {};
-  if (filter.os_type) q["general.os_type"] = filter.os_type;
-  if (filter.mode) q["general.mode"] = filter.mode;
 
-  if (filter.search) {
-    const regex = new RegExp(filter.search, "i");
+  if (filter.os_type) {
+    if (filter.os_type === "android") {
+      q["general.os_type"] = { $in: ["android"] };
+    } else if (filter.os_type === "ios") {
+      q["general.os_type"] = { $in: ["ios"] };
+    }
+  }
+
+  // Mode filter with "test" meaning no restriction, "live" strict
+  if (filter.mode) {
+    if (filter.mode === "live") {
+      q["general.mode"] = "live";
+    } // if "test", intentionally do nothing (fetch all)
+  }
+
+  // Search filter
+  if (filter.search?.trim()) {
+    const regex = new RegExp(filter.search.trim(), "i");
     q.$or = [
       { "general.name": regex },
       { "general.country": regex },
@@ -81,9 +87,22 @@ export async function listServers(
     ];
   }
 
+  return q;
+}
+
+export async function listServers(
+  filter: ServerListFilter,
+  page = 1,
+  limit = 50,
+  deps: CacheDeps = {}
+) {
+  const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
+
+  const q = buildServerQuery(filter);
+
   // Cache key (versioned)
   const ver = await getCollectionVersion(redis);
-  const keyPayload = { type: "list", ...filter, page, limit }; // 👈 add type
+  const keyPayload = { type: "list", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
   // Try cache
@@ -98,7 +117,6 @@ export async function listServers(
   const total = await ServerModel.countDocuments(q);
   const docs = await cursor.skip((page - 1) * limit).limit(limit);
 
-  // 🔥 Flatten only (no grouping)
   const data = docs.map((d) => toListItem(d as any));
 
   const result = {
@@ -107,7 +125,6 @@ export async function listServers(
     data,
   };
 
-  // Cache
   await setJSON(redis, listKey, result, listTtlSec);
   return result;
 }
@@ -120,24 +137,11 @@ export async function listGroupedServers(
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
 
-  // Build DB query
-  const q: FilterQuery<IServer> = {};
-  if (filter.os_type) q["general.os_type"] = filter.os_type;
-  if (filter.mode) q["general.mode"] = filter.mode;
-
-  if (filter.search) {
-    const regex = new RegExp(filter.search, "i");
-    q.$or = [
-      { "general.name": regex },
-      { "general.country": regex },
-      { "general.city": regex },
-      { "general.ip": regex },
-    ];
-  }
+  const q = buildServerQuery(filter);
 
   // Cache key (versioned)
   const ver = await getCollectionVersion(redis);
-  const keyPayload = { type: "grouped", ...filter, page, limit }; // 👈 add type
+  const keyPayload = { type: "grouped", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
   // Try cache
@@ -155,11 +159,12 @@ export async function listGroupedServers(
   const total = await ServerModel.countDocuments(q);
   const docs = await cursor.skip((page - 1) * limit).limit(limit);
 
-  // Flatten and group by country
+  // Group by country
   const grouped = new Map<
     string,
     { country: string; country_code: string; flag: string; servers: any[] }
   >();
+
   for (const d of docs) {
     const item = toListItem(d as any);
     const key = item.country;
@@ -182,7 +187,6 @@ export async function listGroupedServers(
     data,
   };
 
-  // Cache
   await setJSON(redis, listKey, result, listTtlSec);
   return result;
 }
@@ -268,7 +272,7 @@ export async function updateServer(
   }).lean();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id)); // drop transformed cache
+    await del(redis, CacheKeys.byId(id)); // drop transformed cache
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -287,7 +291,7 @@ export async function setServerMode(
   ).lean();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -306,7 +310,7 @@ export async function setServerIsPro(
   ).lean();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -331,7 +335,7 @@ export async function updateOpenVPNConfig(
   ).lean();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -355,7 +359,7 @@ export async function updateWireguardConfig(
   ).lean();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -365,7 +369,7 @@ export async function deleteServer(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
   const res = await ServerModel.findByIdAndDelete(id);
   if (res) {
-    await delKey(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
   }
   return !!res;

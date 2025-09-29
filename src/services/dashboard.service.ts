@@ -36,6 +36,20 @@ async function setJSON(
   } catch {}
 }
 
+type OsBucket = "android" | "ios"
+
+function normalizeByOsAgg(
+  agg: Array<{ _id: string; count: number }>
+): Record<OsBucket, number> {
+  const base: Record<OsBucket, number> = { android: 0, ios: 0};
+  for (const { _id, count } of agg) {
+    if (_id === "android" || _id === "ios") {
+      base[_id] = count;
+    }
+  }
+  return base;
+}
+
 export async function getDashboardStats(
   recentLimit: number,
   deps: CacheDeps = {}
@@ -52,11 +66,15 @@ export async function getDashboardStats(
   const last7d = new Date(now.getTime() - 7 * day);
   const last30d = new Date(now.getTime() - 30 * day);
 
+  // --- Replace three countDocuments with ONE aggregation for by_os ---
+  const byOsAggPromise = ServerModel.aggregate<{ _id: string; count: number }>([
+    { $group: { _id: "$general.os_type", count: { $sum: 1 } } },
+  ]);
+
   // Parallelize everything
   const [
     totalServers,
-    androidServers,
-    iosServers,
+    byOsAgg, // <-- NEW
     liveServers,
     testServers,
     proServers,
@@ -72,8 +90,7 @@ export async function getDashboardStats(
     recentFeedback,
   ] = await Promise.all([
     ServerModel.countDocuments({}),
-    ServerModel.countDocuments({ "general.os_type": "android" }),
-    ServerModel.countDocuments({ "general.os_type": "ios" }),
+    byOsAggPromise, // <-- NEW
     ServerModel.countDocuments({ "general.mode": "live" }),
     ServerModel.countDocuments({ "general.mode": "test" }),
     ServerModel.countDocuments({ "general.is_pro": true }),
@@ -119,6 +136,7 @@ export async function getDashboardStats(
   ]);
 
   // Normalize aggregates
+  const byOs = normalizeByOsAgg(byOsAgg); // <-- always returns {android, ios}
   const avgRating30d = avgRatingAgg[0]?.avg
     ? Number(avgRatingAgg[0].avg.toFixed(2))
     : 0;
@@ -127,7 +145,7 @@ export async function getDashboardStats(
     count: r.count,
   }));
 
-  // Merge recent activity
+  // Merge recent activity (unchanged)
   type Activity = {
     type: "server" | "connectivity" | "feedback";
     title: string;
@@ -162,7 +180,7 @@ export async function getDashboardStats(
   const payload = {
     servers: {
       total: totalServers,
-      by_os: { android: androidServers, ios: iosServers },
+      by_os: byOs, // <-- { android, ios }
       by_mode: { live: liveServers, test: testServers },
       pro: proServers,
     },

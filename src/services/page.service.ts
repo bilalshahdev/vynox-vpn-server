@@ -3,81 +3,31 @@ import crypto from "crypto";
 import type Redis from "ioredis";
 import { FilterQuery, Types, UpdateQuery } from "mongoose";
 import { IPage, PageModel } from "../models/page.model";
+import {
+  bumpCollectionVersion,
+  CacheKeys,
+  getCollectionVersion,
+  getJSON,
+  hashKey,
+  setJSON,
+  stableStringify,
+  del
+} from "../utils/cache";
 
-/** ---------- Cache helpers (scoped to Pages) ---------- */
-const NS = "v1:pages";
-const CacheKeys = {
-  ver: () => `${NS}:ver`,
-  list: (ver: string, hash: string) => `${NS}:${ver}:list:${hash}`,
-  byId: (id: string) => `${NS}:id:${id}`,
-  byType: (type: string) => `${NS}:type:${type}`,
-};
-
-async function getCollectionVersion(redis?: Redis): Promise<string> {
-  if (!redis) return "0";
-  const v = await redis.get(CacheKeys.ver());
-  if (v) return v;
-  await redis.set(CacheKeys.ver(), "1");
-  return "1";
-}
-async function bumpCollectionVersion(redis?: Redis) {
-  if (!redis) return;
-  await redis.incr(CacheKeys.ver());
-}
-function stableStringify(obj: Record<string, unknown>) {
-  const keys = Object.keys(obj).sort();
-  const ordered: Record<string, unknown> = {};
-  for (const k of keys) ordered[k] = (obj as any)[k];
-  return JSON.stringify(ordered);
-}
-function hashKey(input: string) {
-  return crypto.createHash("sha1").update(input).digest("hex");
-}
-async function getJSON<T>(
-  redis: Redis | undefined,
-  key: string
-): Promise<T | null> {
-  if (!redis) return null;
-  try {
-    const raw = await redis.get(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-async function setJSON(
-  redis: Redis | undefined,
-  key: string,
-  value: unknown,
-  ttlSec: number
-) {
-  if (!redis) return;
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", ttlSec);
-  } catch {}
-}
-async function delKey(redis: Redis | undefined, key: string) {
-  if (!redis) return;
-  try {
-    await redis.del(key);
-  } catch {}
-}
-
-// Minimal lean shape we need for invalidation
 type PageLean = Pick<IPage, "type"> & { _id: string };
 
 /** ---------- Service API ---------- */
 export type PageListFilter = {
   type?: string;
   title?: string;
-  q?: string; // generic contains filter across type/title/description
+  q?: string; 
 };
 
 type CacheDeps = {
   redis?: Redis;
-  listTtlSec?: number; // default 60
-  idTtlSec?: number; // default 300
-  typeTtlSec?: number; // default 300
+  listTtlSec?: number; 
+  idTtlSec?: number; 
+  typeTtlSec?: number; 
 };
 
 const DEFAULT_LIST_TTL = 60;
@@ -171,7 +121,7 @@ export async function createPage(
     } as IPage);
 
     await bumpCollectionVersion(redis);
-    await delKey(redis, CacheKeys.byType(created.type)); // normalized
+    await del(redis, CacheKeys.byType(created.type)); // normalized
     return created.toObject();
   } catch (err: any) {
     if (err?.code === 11000) {
@@ -230,13 +180,13 @@ export async function updatePage(
     const doc = await PageModel.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
-      context: "query", // ensure validators apply in update
+      context: "query",
     }).lean<PageLean | null>();
 
     if (doc) {
-      await delKey(redis, CacheKeys.byId(id));
-      if (before?.type) await delKey(redis, CacheKeys.byType(before.type));
-      if (doc.type) await delKey(redis, CacheKeys.byType(doc.type));
+      await del(redis, CacheKeys.byId(id));
+      if (before?.type) await del(redis, CacheKeys.byType(before.type));
+      if (doc.type) await del(redis, CacheKeys.byType(doc.type));
       await bumpCollectionVersion(redis);
     }
     return doc;
@@ -254,8 +204,8 @@ export async function deletePage(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
   const doc = await PageModel.findByIdAndDelete(id).lean<PageLean | null>();
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
-    if (doc.type) await delKey(redis, CacheKeys.byType(doc.type));
+    await del(redis, CacheKeys.byId(id));
+    if (doc.type) await del(redis, CacheKeys.byType(doc.type));
     await bumpCollectionVersion(redis);
   }
   return !!doc;

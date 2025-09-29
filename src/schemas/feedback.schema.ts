@@ -12,7 +12,12 @@ export const paramsWithIdSchema = {
 
 const dateTime = { type: "string", format: "date-time" } as const;
 const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" } as const;
-const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
+const osType = { type: "string", enum: ["android", "ios"] } as const;
+
+const networkType = {
+  type: "string",
+  enum: ["wifi", "mobile"],
+} as const;
 
 const feedbackOutSchema = {
   type: "object",
@@ -20,9 +25,10 @@ const feedbackOutSchema = {
     _id: { type: "string" },
     reason: { type: "string" },
     server_id: objectId,
-    rating: { type: "number", minimum: 1, maximum: 5 },
+    rating: { type: "number", minimum: 1, maximum: 5 }, // optional now
     review: { type: "string" },
     os_type: osType,
+    network_type: networkType, // new
     created_at: dateTime,
     updated_at: dateTime,
   },
@@ -30,7 +36,6 @@ const feedbackOutSchema = {
     "_id",
     "reason",
     "server_id",
-    "rating",
     "review",
     "os_type",
     "created_at",
@@ -39,7 +44,6 @@ const feedbackOutSchema = {
   additionalProperties: false,
 } as const;
 
-// ---------- List ----------
 export const listFeedbackSchema = {
   querystring: {
     type: "object",
@@ -47,7 +51,10 @@ export const listFeedbackSchema = {
       server_id: objectId,
       reason: { type: "string" },
       os_type: osType,
+      network_type: networkType, // new (optional)
       rating: { type: "integer", minimum: 1, maximum: 5 },
+      from: dateTime, // new
+      to: dateTime, // new
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
     },
@@ -108,13 +115,14 @@ export const createFeedbackSchema = {
     type: "object",
     properties: {
       reason: { type: "string" },
-      requested_server: { type: "string" },
+      requested_server: { type: "string" }, // kept as-is from your code
       server_id: objectId,
-      rating: { type: "integer", minimum: 1, maximum: 5 },
+      rating: { type: "integer", minimum: 1, maximum: 5 }, // now optional
       review: { type: "string" },
       os_type: osType,
+      network_type: networkType, // new (optional)
     },
-    required: ["reason", "server_id", "rating", "review", "os_type"],
+    required: ["reason", "server_id", "review", "os_type"], // rating removed
     additionalProperties: false,
   } as const,
   response: {

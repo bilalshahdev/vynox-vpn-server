@@ -12,7 +12,7 @@ export const paramsWithIdSchema = {
 } as const;
 
 // Keep OS as compile-time enum.
-const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
+const osType = { type: "string", enum: ["android", "ios"] } as const;
 
 // For server-driven dropdowns: just require non-empty strings.
 const nonEmptyString = { type: "string", minLength: 1 } as const;

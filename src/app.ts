@@ -29,6 +29,7 @@ export function buildApp(): FastifyInstance {
     app.register(fastifyMetrics, { endpoint: "/metrics" });
   }
 
+  app.get("/", async () => "I'm unhappy!");
   app.register(swaggerPlugin);
   app.register(dbPlugin);
   app.register(redisPlugin);

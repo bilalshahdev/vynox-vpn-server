@@ -1,6 +1,6 @@
 // src/utils/cache.ts
-import type Redis from "ioredis";
 import crypto from "crypto";
+import type Redis from "ioredis";
 
 const NS = "v1:servers"; // namespace for this module
 
@@ -8,6 +8,9 @@ export const CacheKeys = {
   ver: () => `${NS}:ver`,
   list: (ver: string, hash: string) => `${NS}:${ver}:list:${hash}`,
   byId: (id: string) => `${NS}:id:${id}`,
+  openByPair: (u: string, s: string) => `${NS}:open:${u}:${s}`,
+  byName: (name: string) => `${NS}:name:${name}`,
+  byType: (type: string) => `${NS}:type:${type}`,
 };
 
 export async function getCollectionVersion(redis?: Redis): Promise<string> {
@@ -35,7 +38,10 @@ export function hashKey(input: string) {
   return crypto.createHash("sha1").update(input).digest("hex");
 }
 
-export async function getJSON<T>(redis: Redis | undefined, key: string): Promise<T | null> {
+export async function getJSON<T>(
+  redis: Redis | undefined,
+  key: string
+): Promise<T | null> {
   if (!redis) return null;
   try {
     const raw = await redis.get(key);

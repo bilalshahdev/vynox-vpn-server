@@ -12,7 +12,7 @@ export const paramsWithIdSchema = {
   additionalProperties: false,
 } as const;
 
-const osType = { type: "string", enum: ["android", "ios", "both"] } as const;
+const osType = { type: "string", enum: ["android", "ios"] } as const;
 const categoriesEnum = {
   type: "string",
   enum: ["gaming", "streaming"],

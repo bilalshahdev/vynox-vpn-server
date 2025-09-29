@@ -15,22 +15,29 @@ export async function list(
     server_id,
     reason,
     os_type,
+    network_type, // new
     rating,
-
+    from, // new
+    to, // new
     page = 1,
     limit = 50,
   } = req.query;
+
   const result = await S.listFeedback(
     {
       server_id,
       reason,
       os_type,
+      network_type,
       rating,
+      from,
+      to,
     },
     page,
     limit,
     { redis: req.server.redis }
   );
+
   return reply.send(result);
 }
 

@@ -14,7 +14,7 @@ export interface IServer extends Document {
     ip: string;
     latitude: number;
     longitude: number;
-    os_type: "android" | "ios" | "both";
+    os_type: "android" | "ios"
   };
   openvpn_config?: {
     username: string;
@@ -49,7 +49,7 @@ const serverSchema = new Schema<IServer>(
       },
       latitude: { type: Number, required: true },
       longitude: { type: Number, required: true },
-      os_type: { type: String, enum: ["android", "ios", "both"], required: true },
+      os_type: { type: String, enum: ["android", "ios"], required: true },
     },
     openvpn_config: {
       username: { type: String },

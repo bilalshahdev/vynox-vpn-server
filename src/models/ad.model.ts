@@ -6,7 +6,7 @@ export interface IAd extends Document {
   position: string;
   status: boolean;
   ad_id: string;
-  os_type: "android" | "ios" | "both";
+  os_type: "android" | "ios";
   created_at: Date;
   updated_at: Date;
 }
@@ -23,7 +23,7 @@ const adSchema = new Schema<IAd>(
     },
     status: { type: Boolean, default: true },
     ad_id: { type: String },
-    os_type: { type: String, enum: ["android", "ios", "both"], required: true },
+    os_type: { type: String, enum: ["android", "ios"], required: true },
   },
   {
     timestamps: {

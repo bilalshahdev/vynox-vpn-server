@@ -3,13 +3,13 @@ import { Schema, model, Document, Types, models } from "mongoose";
 
 export interface IFeedback extends Document {
   reason: string;
-  network_type: string; // e.g., wifi, data
-  requested_server: string; // missing server name
-  server_id: Types.ObjectId; // FK -> Server
-  rating: number; // 1–5
+  network_type: "wifi" | "mobile";
+  requested_server: string;
+  server_id: Types.ObjectId;
+  rating: number;
   review: string;
-  additional_data?: Record<string, any>; // JSON (device detail)
-  os_type: "android" | "ios" | "both";
+  additional_data?: Record<string, any>;
+  os_type: "android" | "ios"
   datetime: Date;
   created_at: Date;
   updated_at: Date;
@@ -18,13 +18,13 @@ export interface IFeedback extends Document {
 const feedbackSchema = new Schema<IFeedback>(
   {
     reason: { type: String, required: true },
-    network_type: { type: String, required: true },
+    network_type: { type: String, enum: ["wifi", "mobile"] },
     requested_server: { type: String, required: true },
     server_id: { type: Schema.Types.ObjectId, ref: "Server", required: true },
     rating: { type: Number, min: 1, max: 5, required: true },
     review: { type: String, required: true },
-    additional_data: { type: Schema.Types.Mixed }, // flexible JSON
-    os_type: { type: String, enum: ["android", "ios", "both"], required: true },
+    additional_data: { type: Schema.Types.Mixed },
+    os_type: { type: String, enum: ["android", "ios"], required: true },
     datetime: { type: Date, default: Date.now },
   },
   {
@@ -35,4 +35,5 @@ const feedbackSchema = new Schema<IFeedback>(
 feedbackSchema.index({ datetime: -1 });
 feedbackSchema.index({ rating: 1, datetime: -1 });
 
-export const FeedbackModel = models.Feedback || model<IFeedback>("Feedback", feedbackSchema);
+export const FeedbackModel =
+  models.Feedback || model<IFeedback>("Feedback", feedbackSchema);

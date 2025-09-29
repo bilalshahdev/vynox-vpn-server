@@ -48,7 +48,7 @@ export const getDashboardSchema = {
                     android: { type: "integer" },
                     ios: { type: "integer" },
                   },
-                  required: ["android", "ios", "both"],
+                  required: ["android", "ios"],
                   additionalProperties: false,
                 },
                 by_mode: {

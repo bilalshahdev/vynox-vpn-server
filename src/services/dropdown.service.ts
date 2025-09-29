@@ -1,69 +1,19 @@
 // src/services/dropdown.service.ts
-import crypto from "crypto";
 import type Redis from "ioredis";
 import { FilterQuery, UpdateQuery } from "mongoose";
 import { Dropdown, IDropdown, IDropdownValue } from "../models/dropdown.model";
+import {
+  bumpCollectionVersion,
+  CacheKeys,
+  del,
+  getCollectionVersion,
+  getJSON,
+  hashKey,
+  setJSON,
+  stableStringify
+} from "../utils/cache";
 
 type DropdownLean = Pick<IDropdown, "name"> & { _id: string };
-
-/** ---------------- Cache (scoped to dropdowns) ---------------- */
-const NS = "v1:dropdowns";
-const CacheKeys = {
-  ver: () => `${NS}:ver`,
-  list: (ver: string, hash: string) => `${NS}:${ver}:list:${hash}`,
-  byId: (id: string) => `${NS}:id:${id}`,
-  byName: (name: string) => `${NS}:name:${name}`,
-};
-
-async function getCollectionVersion(redis?: Redis): Promise<string> {
-  if (!redis) return "0";
-  const v = await redis.get(CacheKeys.ver());
-  if (v) return v;
-  await redis.set(CacheKeys.ver(), "1");
-  return "1";
-}
-async function bumpCollectionVersion(redis?: Redis) {
-  if (!redis) return;
-  await redis.incr(CacheKeys.ver());
-}
-function stableStringify(obj: Record<string, unknown>) {
-  const keys = Object.keys(obj).sort();
-  const ordered: Record<string, unknown> = {};
-  for (const k of keys) ordered[k] = (obj as any)[k];
-  return JSON.stringify(ordered);
-}
-function hashKey(input: string) {
-  return crypto.createHash("sha1").update(input).digest("hex");
-}
-async function getJSON<T>(
-  redis: Redis | undefined,
-  key: string
-): Promise<T | null> {
-  if (!redis) return null;
-  try {
-    const raw = await redis.get(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-async function setJSON(
-  redis: Redis | undefined,
-  key: string,
-  value: unknown,
-  ttlSec: number
-) {
-  if (!redis) return;
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", ttlSec);
-  } catch {}
-}
-async function delKey(redis: Redis | undefined, key: string) {
-  if (!redis) return;
-  try {
-    await redis.del(key);
-  } catch {}
-}
 
 /** ---------------- Service API ---------------- */
 export type DropdownListFilter = {
@@ -168,9 +118,9 @@ export async function updateDropdown(
   }).lean<DropdownLean | null>();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
-    if (before?.name) await delKey(redis, CacheKeys.byName(before.name));
-    if (doc.name) await delKey(redis, CacheKeys.byName(doc.name));
+    await del(redis, CacheKeys.byId(id));
+    if (before?.name) await del(redis, CacheKeys.byName(before.name));
+    if (doc.name) await del(redis, CacheKeys.byName(doc.name));
     await bumpCollectionVersion(redis);
   }
   return doc;
@@ -198,8 +148,8 @@ export async function addDropdownValue(
   doc.values.push(value);
   await doc.save();
 
-  await delKey(redis, CacheKeys.byId(id));
-  await delKey(redis, CacheKeys.byName(doc.name));
+  await del(redis, CacheKeys.byId(id));
+  await del(redis, CacheKeys.byName(doc.name));
   await bumpCollectionVersion(redis);
 
   return doc.toObject();
@@ -236,8 +186,8 @@ export async function updateDropdownValue(
 
   await doc.save();
 
-  await delKey(redis, CacheKeys.byId(id));
-  await delKey(redis, CacheKeys.byName(doc.name));
+  await del(redis, CacheKeys.byId(id));
+  await del(redis, CacheKeys.byName(doc.name));
   await bumpCollectionVersion(redis);
 
   return doc.toObject();
@@ -257,8 +207,8 @@ export async function removeDropdownValue(
   ).lean<DropdownLean | null>();
 
   if (updated) {
-    await delKey(redis, CacheKeys.byId(id));
-    await delKey(redis, CacheKeys.byName(updated.name));
+    await del(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byName(updated.name));
     await bumpCollectionVersion(redis);
   }
   return updated;
@@ -270,8 +220,8 @@ export async function deleteDropdown(id: string, deps: CacheDeps = {}) {
   const doc = await Dropdown.findByIdAndDelete(id).lean<DropdownLean | null>();
 
   if (doc) {
-    await delKey(redis, CacheKeys.byId(id));
-    await delKey(redis, CacheKeys.byName(doc.name));
+    await del(redis, CacheKeys.byId(id));
+    await del(redis, CacheKeys.byName(doc.name));
     await bumpCollectionVersion(redis);
   }
   return !!doc;

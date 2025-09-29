@@ -1,80 +1,30 @@
 import type Redis from "ioredis";
-import crypto from "crypto";
 import { FilterQuery } from "mongoose";
 import { ConnectivityModel } from "../models/connectivity.model";
-
-/** ---------------- Cache (scoped to connectivity) ---------------- */
-const NS = "v1:connectivity";
-const CacheKeys = {
-  ver: () => `${NS}:ver`,
-  list: (ver: string, hash: string) => `${NS}:${ver}:list:${hash}`,
-  byId: (id: string) => `${NS}:id:${id}`,
-  openByPair: (u: string, s: string) => `${NS}:open:${u}:${s}`,
-};
-
-async function getCollectionVersion(redis?: Redis): Promise<string> {
-  if (!redis) return "0";
-  const v = await redis.get(CacheKeys.ver());
-  if (v) return v;
-  await redis.set(CacheKeys.ver(), "1");
-  return "1";
-}
-async function bumpCollectionVersion(redis?: Redis) {
-  if (!redis) return;
-  await redis.incr(CacheKeys.ver());
-}
-function stableStringify(obj: Record<string, unknown>) {
-  const keys = Object.keys(obj).sort();
-  const ordered: Record<string, unknown> = {};
-  for (const k of keys) ordered[k] = (obj as any)[k];
-  return JSON.stringify(ordered);
-}
-function hashKey(input: string) {
-  return crypto.createHash("sha1").update(input).digest("hex");
-}
-async function getJSON<T>(
-  redis: Redis | undefined,
-  key: string
-): Promise<T | null> {
-  if (!redis) return null;
-  try {
-    const raw = await redis.get(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-async function setJSON(
-  redis: Redis | undefined,
-  key: string,
-  value: unknown,
-  ttlSec: number
-) {
-  if (!redis) return;
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", ttlSec);
-  } catch {}
-}
-async function delKey(redis: Redis | undefined, key: string) {
-  if (!redis) return;
-  try {
-    await redis.del(key);
-  } catch {}
-}
+import {
+  bumpCollectionVersion,
+  CacheKeys,
+  del,
+  getCollectionVersion,
+  getJSON,
+  hashKey,
+  setJSON,
+  stableStringify,
+} from "../utils/cache";
 
 /** ---------------- Service API ---------------- */
 export type ConnectivityListFilter = {
   user_id?: string;
   server_id?: string;
-  from?: string; // ISO date-time for connected_at >= from
-  to?: string; // ISO date-time for connected_at <= to
+  from?: string;
+  to?: string;
 };
 
 type CacheDeps = {
   redis?: Redis;
-  listTtlSec?: number; // default 30
-  idTtlSec?: number; // default 120
-  openPairTtlSec?: number; // default 15
+  listTtlSec?: number;
+  idTtlSec?: number;
+  openPairTtlSec?: number;
 };
 
 const DEFAULT_LIST_TTL = 30;
@@ -135,7 +85,6 @@ export async function getConnectivityById(id: string, deps: CacheDeps = {}) {
   return doc;
 }
 
-/** Returns the currently open session for (user, server), or null */
 export async function getOpenByPair(
   payload: { user_id: string; server_id: string },
   deps: CacheDeps = {}
@@ -155,7 +104,6 @@ export async function getOpenByPair(
   return open;
 }
 
-/** Creates a new open session if none exists. No transactions. */
 export async function connect(
   payload: { user_id: string; server_id: string },
   deps: CacheDeps = {}
@@ -163,7 +111,6 @@ export async function connect(
   const { redis } = deps;
   const now = new Date();
 
-  // Soft check first (fast path)
   const existing = await ConnectivityModel.exists({
     user_id: payload.user_id,
     server_id: payload.server_id,
@@ -181,14 +128,10 @@ export async function connect(
 
     // Invalidate caches
     await bumpCollectionVersion(redis);
-    await delKey(
-      redis,
-      CacheKeys.openByPair(payload.user_id, payload.server_id)
-    );
+    await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
 
     return { status: "created", data: created.toObject() };
   } catch (err: any) {
-    // Handle race via unique index on (user_id, server_id, disconnected_at: null)
     if (err?.code === 11000) {
       return { status: "conflict" };
     }
@@ -196,7 +139,6 @@ export async function connect(
   }
 }
 
-/** Closes the open session for (user, server) by setting disconnected_at=now. */
 export async function disconnect(
   payload: { user_id: string; server_id: string },
   deps: CacheDeps = {}
@@ -218,11 +160,8 @@ export async function disconnect(
 
   if (updatedDoc) {
     await bumpCollectionVersion(redis);
-    await delKey(
-      redis,
-      CacheKeys.openByPair(payload.user_id, payload.server_id)
-    );
-    await delKey(redis, CacheKeys.byId(String(updatedDoc._id)));
+    await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
+    await del(redis, CacheKeys.byId(String(updatedDoc._id)));
     return updatedDoc.toObject(); // keep your service contract returning plain JSON
   }
 
@@ -233,7 +172,7 @@ export async function deleteConnectivity(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
   const res = await ConnectivityModel.findByIdAndDelete(id);
   if (res) {
-    await delKey(redis, CacheKeys.byId(String(id)));
+    await del(redis, CacheKeys.byId(String(id)));
     await bumpCollectionVersion(redis);
   }
   return !!res;
