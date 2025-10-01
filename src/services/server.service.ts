@@ -14,7 +14,7 @@ import {
 } from "../utils/cache";
 
 export type ServerListFilter = {
-  os_type?: "android" | "ios"
+  os_type?: "android" | "ios";
   mode?: "test" | "live";
   search?: string;
 };
@@ -214,23 +214,30 @@ export async function createServer(
 ) {
   const { redis } = deps;
 
-  // unique IP check
+  // app-level guard (nice error), DB index is the final authority
   const existing = await ServerModel.findOne({
     "general.ip": payload.general?.ip,
-  });
+    "general.os_type": payload.general?.os_type,
+  }).lean();
   if (existing) {
-    const error = new Error("IP already in use");
+    const error = new Error("IP already in use for this os_type");
     (error as any).statusCode = 409;
     throw error;
   }
 
-  if (payload.general) {
-    payload.general.flag = flagOf(payload.general.country_code);
+  try {
+    const created = await ServerModel.create(payload as IServer);
+    await bumpCollectionVersion(redis);
+    return created.toObject();
+  } catch (e: any) {
+    // surface duplicate key as 409
+    if (e?.code === 11000 && /uniq_os_type_ip/.test(e?.message || "")) {
+      const err = new Error("IP already in use for this os_type");
+      (err as any).statusCode = 409;
+      throw err;
+    }
+    throw e;
   }
-
-  const created = await ServerModel.create(payload as IServer);
-  await bumpCollectionVersion(redis); // invalidate lists
-  return created.toObject();
 }
 
 export async function updateServer(
@@ -240,42 +247,63 @@ export async function updateServer(
 ) {
   const { redis } = deps;
 
-  // 1) Normalize nested `general` to $set paths (safe updates)
+  // 1) normalize nested paths
   update = normalizeGeneralToSet(update);
+  const $set = (update as any).$set || {};
 
-  // 2) If IP is being changed, enforce uniqueness excluding current doc
-  const nextIP = extractUpdatedIP(update);
-  if (typeof nextIP === "string" && nextIP.trim().length > 0) {
+  // 2) compute next (ip, os_type) pair to check
+  const ipChanged = $set["general.ip"] != null;
+  const osChanged = $set["general.os_type"] != null;
+
+  if (ipChanged || osChanged) {
+    const current = await ServerModel.findById(id).select({
+      "general.ip": 1,
+      "general.os_type": 1,
+    });
+
+    if (!current) {
+      const err = new Error("Server not found");
+      (err as any).statusCode = 404;
+      throw err;
+    }
+
+    const nextIP = ipChanged ? String($set["general.ip"]) : current.general.ip;
+    const nextOS = osChanged
+      ? String($set["general.os_type"])
+      : current.general.os_type;
+
     const conflict = await ServerModel.exists({
       _id: { $ne: id },
       "general.ip": nextIP,
+      "general.os_type": nextOS,
     });
     if (conflict) {
-      const err = new Error("IP already in use");
+      const err = new Error("IP already in use for this os_type");
       (err as any).statusCode = 409;
       throw err;
     }
   }
 
-  // 3) If country_code is present, set/refresh the flag accordingly
-  const nextCountryCode = extractUpdatedCountryCode(update);
-  if (nextCountryCode) {
-    if (!(update as any).$set) (update as any).$set = {};
-    (update as any).$set["general.flag"] = flagOf(nextCountryCode);
-  }
+  try {
+    const doc = await ServerModel.findByIdAndUpdate(id, update, {
+      new: true,
+      runValidators: true,
+      context: "query",
+    }).lean();
 
-  // 4) Perform update
-  const doc = await ServerModel.findByIdAndUpdate(id, update, {
-    new: true,
-    runValidators: true,
-    context: "query", // ensure validators for update paths
-  }).lean();
-
-  if (doc) {
-    await del(redis, CacheKeys.byId(id)); // drop transformed cache
-    await bumpCollectionVersion(redis);
+    if (doc) {
+      await del(redis, CacheKeys.byId(id));
+      await bumpCollectionVersion(redis);
+    }
+    return doc;
+  } catch (e: any) {
+    if (e?.code === 11000 && /uniq_os_type_ip/.test(e?.message || "")) {
+      const err = new Error("IP already in use for this os_type");
+      (err as any).statusCode = 409;
+      throw err;
+    }
+    throw e;
   }
-  return doc;
 }
 
 export async function setServerMode(

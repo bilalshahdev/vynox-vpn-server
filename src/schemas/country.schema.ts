@@ -100,7 +100,7 @@ export const createCountrySchema = {
       flag: { type: "string" }, // e.g. "pk.png"
       country_code: { type: "string" }, // optional
     },
-    required: ["_id", "name", "slug"],
+    required: ["name", "slug", "flag", "country_code"],
     additionalProperties: false,
   } as const,
   response: {

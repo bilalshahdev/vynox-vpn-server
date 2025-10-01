@@ -2,12 +2,12 @@
 import { Schema, model, models, Document } from "mongoose";
 
 export interface ICity extends Document {
-  name: string; // "Lahore"
-  slug: string; // "lahore"
-  state: string; // "PB"
-  country_id: string; // "PK" (ref Country._id)
-  latitude: number; // 31.5204
-  longitude: number; // 74.3587
+  name: string;
+  slug: string;
+  state: string;
+  country: string; // ref Country._id ("IN")
+  latitude: number;
+  longitude: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -17,21 +17,24 @@ const CitySchema = new Schema<ICity>(
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, lowercase: true, trim: true },
     state: { type: String, required: true, uppercase: true, trim: true },
-    country_id: {
+
+    country: {
       type: String,
+      ref: "Country", // 👈 directly reference Country model
       required: true,
-      ref: "Country",
       uppercase: true,
       trim: true,
     },
+
     latitude: { type: Number, required: true },
     longitude: { type: Number, required: true },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
-CitySchema.index({ country_id: 1, slug: 1 }, { unique: true });
-CitySchema.index({ country_id: 1, state: 1, name: 1 }, { unique: true });
+// indexes
+CitySchema.index({ country: 1, slug: 1 }, { unique: true });
+CitySchema.index({ country: 1, state: 1, name: 1 }, { unique: true });
 
 // normalize slug + uppercasing
 CitySchema.pre("validate", function (next) {
@@ -44,12 +47,14 @@ CitySchema.pre("validate", function (next) {
       .trim()
       .replace(/\s+/g, "-");
   }
-  if (this.country_id) this.country_id = this.country_id.toUpperCase();
+  if (this.country) this.country = this.country.toUpperCase();
   if (this.state) this.state = this.state.toUpperCase();
   if (this.slug) this.slug = this.slug.toLowerCase();
   next();
 });
 
-
+// Ensure virtuals are included when converting to JSON
+CitySchema.set("toObject", { virtuals: true });
+CitySchema.set("toJSON", { virtuals: true });
 
 export const CityModel = models.City || model<ICity>("City", CitySchema);

@@ -6,6 +6,7 @@ import {
   cityIdParams,
   createCitySchema,
   updateCitySchema,
+  getCityByIdSchema,
 } from "../../../schemas/city.schema";
 import * as CityController from "../controllers/city.controller";
 
@@ -17,6 +18,12 @@ export default async function cityRoutes(app: FastifyInstance) {
       security: [{ bearerAuth: [] }],
     };
   });
+
+  app.get(
+    "/:id",
+    { schema: { params: cityIdParams, summary: "Get city by ID" } },
+    CityController.getById
+  );
 
   app.get(
     "/",

@@ -1,13 +1,14 @@
 import { FastifyInstance } from "fastify";
-import * as ConnectivityController from "../controllers/connectivity.controller";
 import {
-  listConnectivitySchema,
-  getConnectivityByIdSchema,
   connectSchema,
   disconnectSchema,
-  paramsWithIdSchema,
+  getConnectivityByIdSchema,
+  listConnectivitySchema,
   openByPairQuerySchema,
+  paramsWithIdSchema,
+  serversWithStatsSchema,
 } from "../../../schemas/connectivity.schema";
+import * as C from "../controllers/connectivity.controller";
 
 export default async function connectivityRoutes(app: FastifyInstance) {
   app.addHook("onRoute", (opts) => {
@@ -18,41 +19,27 @@ export default async function connectivityRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get(
+    "/servers",
+    { schema: serversWithStatsSchema },
+    C.serverListWithStats
+  );
+
   // GET /connectivity
-  app.get("/", { schema: listConnectivitySchema }, ConnectivityController.list);
+  app.get("/", { schema: listConnectivitySchema }, C.list);
 
   // GET /connectivity/:id
-  app.get(
-    "/:id",
-    { schema: getConnectivityByIdSchema },
-    ConnectivityController.getById
-  );
+  app.get("/:id", { schema: getConnectivityByIdSchema }, C.getById);
 
   // GET /connectivity/open?user_id&server_id (optional convenience)
-  app.get(
-    "/open",
-    { schema: openByPairQuerySchema },
-    ConnectivityController.getOpenByPair
-  );
+  app.get("/open", { schema: openByPairQuerySchema }, C.getOpenByPair);
 
   // POST /connectivity/connect
-  app.post(
-    "/connect",
-    { schema: connectSchema },
-    ConnectivityController.connect
-  );
+  app.post("/connect", { schema: connectSchema }, C.connect);
 
   // POST /connectivity/disconnect
-  app.post(
-    "/disconnect",
-    { schema: disconnectSchema },
-    ConnectivityController.disconnect
-  );
+  app.post("/disconnect", { schema: disconnectSchema }, C.disconnect);
 
   // DELETE /connectivity/:id
-  app.delete(
-    "/:id",
-    { schema: { params: paramsWithIdSchema } },
-    ConnectivityController.remove
-  );
+  app.delete("/:id", { schema: { params: paramsWithIdSchema } }, C.remove);
 }

@@ -45,7 +45,7 @@ export default async function serverRoutes(app: FastifyInstance) {
   // req: FastifyRequest<{ Body: FromCreateServerBody }>
   app.post<{ Body: S.FromCreateServerBody }>(
     "/",
-    { schema: S.createServerSchema, preHandler: verifyToken },
+    { schema: S.createServerSchema},
     ServerController.create
   );
 

@@ -1,3 +1,4 @@
+// src/plugins/error-handler.ts
 import type { FastifyError, FastifyInstance } from "fastify";
 import fp from "fastify-plugin";
 
@@ -10,25 +11,33 @@ export default fp(async function errorHandler(app: FastifyInstance) {
       request.log.error({
         msg: error.message,
         name: error.name,
-        code: (error as any).code,
+        code: error.code,
         reqId: (request as any).id,
       });
     } else {
       request.log.error(error);
     }
 
-    // ----------- AJV validation (Fastify) -----------
-    if (error.validation) {
+    if (Array.isArray(error.validation)) {
+      // Request schema error
       return reply.status(400).send({
         success: false,
-        message: "Validation error",
-        context: error.validationContext, // 'params' | 'body' | 'querystring' | ...
-        errors: error.validation, // ajv details
+        message: "Request validation error",
+        context: error.validationContext || "unknown",
+        errors: error.validation,
       });
     }
 
-    // ----------- Mongoose / Mongo mappings -----------
-    // Bad ObjectId (e.g., /:id malformed)
+    if (error.code === "FST_ERR_RESPONSE_SERIALIZATION") {
+      // Response schema error
+      return reply.status(500).send({
+        success: false,
+        message: "Response serialization error",
+        details: error.message,
+      });
+    }
+
+    // ----------- Mongoose errors -----------
     if (error.name === "CastError" && error.path === "_id") {
       return reply.status(400).send({
         success: false,
@@ -36,20 +45,17 @@ export default fp(async function errorHandler(app: FastifyInstance) {
       });
     }
 
-    // Duplicate key
     if (error.code === 11000) {
       return reply.status(409).send({
         success: false,
         message: "Duplicate key",
-        // keyValue is helpful in dev; keep or strip in prod
         key: error.keyValue,
       });
     }
 
     // ----------- Fallback -----------
     const status = Number.isInteger(error.statusCode) ? error.statusCode : 500;
-    const message =
-      status >= 500 ? "Internal Server Error" : error.message || "Error";
+    const message = error.message || "Internal Server Error";
 
     return reply.status(status).send({ success: false, message });
   });

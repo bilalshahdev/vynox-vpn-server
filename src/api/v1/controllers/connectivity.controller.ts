@@ -1,12 +1,26 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import {
-  FromListConnectivityQuery,
-  FromParamsWithId,
   FromConnectBody,
   FromDisconnectBody,
+  FromListConnectivityQuery,
   FromOpenByPairQuery,
+  FromParamsWithId,
+  FromServersWithStatsQuery,
 } from "../../../schemas/connectivity.schema";
 import * as S from "../../../services/connectivity.service";
+
+export async function serverListWithStats(
+  req: FastifyRequest<{ Querystring: FromServersWithStatsQuery }>,
+  reply: FastifyReply
+) {
+  const { page = 1, limit = 50 } = req.query;
+
+  const result = await S.getServersWithConnectionStats(page, limit, {
+    redis: req.server.redis,
+  });
+
+  return reply.send(result);
+}
 
 export async function list(
   req: FastifyRequest<{ Querystring: FromListConnectivityQuery }>,
@@ -41,43 +55,45 @@ export async function getOpenByPair(
   reply: FastifyReply
 ) {
   const { user_id, server_id } = req.query;
-  const item = await S.getOpenByPair({ user_id, server_id }, { redis: req.server.redis });
-  return reply.send({ success: true, data: item }); // data can be null if none
+  const item = await S.getOpenByPair(
+    { user_id, server_id },
+    { redis: req.server.redis }
+  );
+  return reply.send({ success: true, data: item });
 }
 
-/** POST /connectivity/connect
- * Creates a new open record for (user, server) with connected_at=now.
- * If an open record already exists -> 409.
- */
 export async function connect(
   req: FastifyRequest<{ Body: FromConnectBody }>,
   reply: FastifyReply
 ) {
   const { user_id, server_id } = req.body;
 
-  const result = await S.connect({ user_id, server_id }, { redis: req.server.redis });
+  const result = await S.connect(
+    { user_id, server_id },
+    { redis: req.server.redis }
+  );
 
   if (result.status === "conflict") {
     return reply.code(409).send({
       success: false,
-      message: "Already connected: an open session exists for this user and server.",
+      message:
+        "Already connected: an open session exists for this user and server.",
     });
   }
 
   return reply.code(201).send({ success: true, data: result.data });
 }
 
-/** POST /connectivity/disconnect
- * Marks disconnected_at=now for the open record of (user, server).
- * If no open record exists -> 409.
- */
 export async function disconnect(
   req: FastifyRequest<{ Body: FromDisconnectBody }>,
   reply: FastifyReply
 ) {
   const { user_id, server_id } = req.body;
 
-  const item = await S.disconnect({ user_id, server_id }, { redis: req.server.redis });
+  const item = await S.disconnect(
+    { user_id, server_id },
+    { redis: req.server.redis }
+  );
 
   if (!item) {
     return reply.code(409).send({

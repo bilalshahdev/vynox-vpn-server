@@ -1,6 +1,6 @@
 services:
   app:
-    image: bilalshah110/vynox-vpn-server-app:1.0.0
+    image: bilalshah110/vynox-vpn-server-app:1.0.4
     container_name: vynox_server
     ports:
       - "2025:2025"

@@ -115,14 +115,14 @@ export const createFeedbackSchema = {
     type: "object",
     properties: {
       reason: { type: "string" },
-      requested_server: { type: "string" }, // kept as-is from your code
+      requested_server: { type: "string" }, 
       server_id: objectId,
-      rating: { type: "integer", minimum: 1, maximum: 5 }, // now optional
+      rating: { type: "integer", minimum: 1, maximum: 5 }, 
       review: { type: "string" },
       os_type: osType,
-      network_type: networkType, // new (optional)
+      network_type: networkType, 
     },
-    required: ["reason", "server_id", "review", "os_type"], // rating removed
+    required: ["reason", "server_id", "review", "os_type"], 
     additionalProperties: false,
   } as const,
   response: {

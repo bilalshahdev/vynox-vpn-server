@@ -10,6 +10,8 @@ import {
   stableStringify,
   bumpCollectionVersion,
 } from "../utils/cache";
+import { CityModel } from "../models/city.model";
+import { ServerModel } from "../models/server.model";
 
 type CacheDeps = { redis?: Redis; listTtlSec?: number; idTtlSec?: number };
 const DEFAULT_LIST_TTL = 300;
@@ -71,7 +73,14 @@ export async function searchCountries(
 
 export async function createCountry(payload: any, deps: CacheDeps = {}) {
   const { redis } = deps;
-  const doc = await CountryModel.create(payload);
+  // some decoration in console to make it more readable
+  console.log("\n\n\n")
+  console.log({payload: payload})
+  console.log("\n\n\n")
+  const doc = await CountryModel.create({
+    _id: payload.country_code.toUpperCase(),
+    ...payload,
+  });
   await bumpCollectionVersion(redis);
   return doc.toObject();
 }
@@ -90,8 +99,19 @@ export async function updateCountry(
 }
 export async function deleteCountry(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
+
+  // First delete the country
   const res = await CountryModel.findByIdAndDelete(id);
-  if (res) await bumpCollectionVersion(redis);
+
+  if (res) {
+    // Cascade delete: all cities for this country
+    await CityModel.deleteMany({ country_id: id });
+
+    // Cascade delete: all servers for this country
+    await ServerModel.deleteMany({ "general.country_code": id });
+
+    await bumpCollectionVersion(redis);
+  }
   return !!res;
 }
 

@@ -181,4 +181,110 @@ export const openByPairQuerySchema = {
   },
 } as const;
 
-export type FromOpenByPairQuery = FromSchema<typeof openByPairQuerySchema.querystring>;
+export type FromOpenByPairQuery = FromSchema<
+  typeof openByPairQuerySchema.querystring
+>;
+
+// connectivity.schema.ts
+
+export const serverWithActiveSchema = {
+  params: {
+    type: "object",
+    properties: {
+      server_id: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+    },
+    required: ["server_id"],
+    additionalProperties: false,
+  } as const,
+  response: {
+    200: {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        data: {
+          type: "object",
+          properties: {
+            _id: { type: "string" },
+            name: { type: "string" }, // adjust fields based on your ServerModel
+            region: { type: "string" },
+            activeConnections: { type: "integer" },
+          },
+          required: ["_id", "name", "region", "activeConnections"],
+          additionalProperties: true,
+        },
+      },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+    404: {
+      type: "object",
+      properties: { success: { type: "boolean" }, message: { type: "string" } },
+      required: ["success", "message"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+// connectivity.schema.ts
+export const serversWithStatsSchema = {
+  querystring: {
+    type: "object",
+    properties: {
+      page: { type: "integer", minimum: 1, default: 1 },
+      limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+    },
+    additionalProperties: false,
+  } as const,
+  response: {
+    200: {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        pagination: {
+          type: "object",
+          properties: {
+            page: { type: "integer" },
+            limit: { type: "integer" },
+            total: { type: "integer" },
+            pages: { type: "integer" },
+          },
+          required: ["page", "limit", "total", "pages"],
+          additionalProperties: false,
+        },
+        data: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              server: {
+                type: "object",
+                properties: {
+                  _id: { type: "string" },
+                },
+                required: ["_id"],
+                additionalProperties: true,
+              },
+              connections: {
+                type: "object",
+                properties: {
+                  total: { type: "integer" },
+                  active: { type: "integer" },
+                },
+                required: ["total", "active"],
+                additionalProperties: false,
+              },
+            },
+            required: ["server", "connections"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["success", "pagination", "data"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+export type FromServersWithStatsQuery = FromSchema<
+  typeof serversWithStatsSchema.querystring
+>;

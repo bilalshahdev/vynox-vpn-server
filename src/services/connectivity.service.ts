@@ -11,6 +11,7 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
+import { ServerModel } from "../models/server.model";
 
 /** ---------------- Service API ---------------- */
 export type ConnectivityListFilter = {
@@ -25,11 +26,91 @@ type CacheDeps = {
   listTtlSec?: number;
   idTtlSec?: number;
   openPairTtlSec?: number;
+  ttlSec?: number;
 };
 
 const DEFAULT_LIST_TTL = 30;
 const DEFAULT_ID_TTL = 120;
 const DEFAULT_OPEN_PAIR_TTL = 15;
+
+const DEFAULT_TTL = 15; // short cache for dashboards
+
+export async function getServersWithConnectionStats(
+  page = 1,
+  limit = 50,
+  deps: CacheDeps = {}
+) {
+  const { redis, ttlSec = DEFAULT_TTL } = deps;
+
+  const verConnectivity = await getCollectionVersion(redis);
+  const cacheKey = CacheKeys.list(
+    verConnectivity,
+    hashKey(
+      stableStringify({ k: "servers-with-connection-stats", page, limit })
+    )
+  );
+
+  const cached = await getJSON<any>(redis, cacheKey);
+  if (cached) return cached;
+
+  // aggregate total + active counts
+  const counts = await ConnectivityModel.aggregate([
+    {
+      $group: {
+        _id: "$server_id",
+        total: { $sum: 1 },
+        active: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ["$disconnected_at", null] },
+                  { $not: ["$disconnected_at"] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const countMap = new Map<string, { total: number; active: number }>();
+  for (const c of counts) {
+    countMap.set(String(c._id), { total: c.total ?? 0, active: c.active ?? 0 });
+  }
+
+  // pagination
+  const totalServers = await ServerModel.countDocuments();
+  const servers = await ServerModel.find()
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .lean();
+
+  const items = servers.map((s: any) => {
+    const stats = countMap.get(String(s._id)) || { total: 0, active: 0 };
+    return {
+      server: { _id: s._id, ...s.general },
+      connections: { total: stats.total, active: stats.active },
+    };
+  });
+
+  const result = {
+    success: true,
+    pagination: {
+      page,
+      limit,
+      total: totalServers,
+      pages: Math.ceil(totalServers / limit) || 1,
+    },
+    data: items,
+  };
+
+  await setJSON(redis, cacheKey, result, ttlSec);
+  return result;
+}
 
 export async function listConnectivity(
   filter: ConnectivityListFilter,

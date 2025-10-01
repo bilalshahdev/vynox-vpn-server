@@ -15,8 +15,16 @@ import {
 type CacheDeps = { redis?: Redis; listTtlSec?: number };
 const DEFAULT_LIST_TTL = 300;
 
+// ---------------- Get By ID ----------------
+export async function getCityById(id: string) {
+  const city = await CityModel.findById(id).populate("country").lean();
+  if (!city) return null;
+  return { success: true, data: city };
+}
+
+// ---------------- List ----------------
 export async function listCities(
-  filter: { country_id?: string; state?: string },
+  filter: { country?: string; state?: string },
   page = 1,
   limit = 50,
   deps: CacheDeps = {}
@@ -31,12 +39,14 @@ export async function listCities(
   if (cached) return cached;
 
   const q: FilterQuery<ICity> = {};
-  if (filter.country_id) q.country_id = filter.country_id.toUpperCase();
+  if (filter.country) q.country = filter.country.toUpperCase();
   if (filter.state) q.state = filter.state.toUpperCase();
 
   const cursor = CityModel.find(q)
+    .populate("country")
     .lean()
-    .sort({ country_id: 1, state: 1, slug: 1 });
+    .sort({ country: 1, state: 1, slug: 1 });
+
   const total = await CityModel.countDocuments(q);
   const items = await cursor.skip((page - 1) * limit).limit(limit);
 
@@ -49,8 +59,9 @@ export async function listCities(
   return result;
 }
 
+// ---------------- Search ----------------
 export async function searchCities(
-  filter: { q: string; country_id?: string; state?: string },
+  filter: { q: string; country?: string; state?: string },
   limit = 20,
   deps: CacheDeps = {}
 ) {
@@ -63,7 +74,7 @@ export async function searchCities(
       stableStringify({
         scope: "cities:search",
         q: norm,
-        c: filter.country_id?.toUpperCase(),
+        c: filter.country?.toUpperCase(),
         s: filter.state?.toUpperCase(),
         limit,
       })
@@ -73,7 +84,7 @@ export async function searchCities(
   if (cached) return cached;
 
   const q: FilterQuery<ICity> = {};
-  if (filter.country_id) q.country_id = filter.country_id.toUpperCase();
+  if (filter.country) q.country = filter.country.toUpperCase();
   if (filter.state) q.state = filter.state.toUpperCase();
 
   const or = [
@@ -82,8 +93,9 @@ export async function searchCities(
   ];
 
   const items = await CityModel.find({ ...q, $or: or })
+    .populate("country")
     .lean()
-    .sort({ country_id: 1, state: 1, slug: 1 })
+    .sort({ country: 1, state: 1, slug: 1 })
     .limit(limit);
 
   const result = { success: true, data: items };
@@ -91,12 +103,13 @@ export async function searchCities(
   return result;
 }
 
+// ---------------- Create ----------------
 export async function createCity(
   payload: {
     name: string;
     slug: string;
     state: string;
-    country_id: string;
+    country: string; // ISO2
     latitude: number;
     longitude: number;
   },
@@ -107,21 +120,23 @@ export async function createCity(
     name: payload.name,
     slug: payload.slug,
     state: payload.state.toUpperCase(),
-    country_id: payload.country_id.toUpperCase(),
+    country: payload.country.toUpperCase(),
     latitude: payload.latitude,
     longitude: payload.longitude,
   } as any);
+
   await bumpCollectionVersion(redis);
-  return doc.toObject();
+  return CityModel.findById(doc._id).populate("country").lean();
 }
 
+// ---------------- Update ----------------
 export async function updateCity(
   id: string,
   update: Partial<{
     name: string;
     slug: string;
     state: string;
-    country_id: string;
+    country: string;
     latitude: number;
     longitude: number;
   }>,
@@ -132,25 +147,23 @@ export async function updateCity(
   if (update.name) $set.name = update.name;
   if (update.slug) $set.slug = update.slug;
   if (update.state) $set.state = update.state.toUpperCase();
-  if (update.country_id) $set.country_id = update.country_id.toUpperCase();
-  if (
-    typeof update.latitude === "number" &&
-    typeof update.longitude === "number"
-  )
-    $set.loc = {
-      type: "Point",
-      coordinates: [update.longitude, update.latitude],
-    };
+  if (update.country) $set.country = update.country.toUpperCase();
+  if (typeof update.latitude === "number") $set.latitude = update.latitude;
+  if (typeof update.longitude === "number") $set.longitude = update.longitude;
 
   const doc = await CityModel.findByIdAndUpdate(
     id,
     { $set },
     { new: true, runValidators: true }
-  ).lean();
+  )
+    .populate("country")
+    .lean();
+
   if (doc) await bumpCollectionVersion(redis);
   return doc;
 }
 
+// ---------------- Delete ----------------
 export async function deleteCity(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
   const res = await CityModel.findByIdAndDelete(id);
@@ -158,7 +171,7 @@ export async function deleteCity(id: string, deps: CacheDeps = {}) {
   return !!res;
 }
 
-// helpers
+// ---------------- Helpers ----------------
 function slugify(s: string) {
   return s
     .normalize("NFKD")

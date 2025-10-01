@@ -1,24 +1,18 @@
-// src/schemas/city.schema.ts
 import { FromSchema } from "json-schema-to-ts";
+import { countryOut } from "./country.schema"; // ✅ reuse existing country schema
 
-const iso2 = {
-  type: "string",
-  pattern: "^[A-Za-z]{2}$",
-  minLength: 2,
-  maxLength: 2,
-} as const;
 const nonEmpty = { type: "string", minLength: 1 } as const;
-
 const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" } as const;
 
+// ----------------- City Out -----------------
 export const cityOut = {
   type: "object",
   properties: {
     _id: objectId,
     name: nonEmpty,
     slug: nonEmpty,
-    state: nonEmpty, // e.g. "PB"
-    country_id: iso2, // e.g. "PK"
+    state: nonEmpty,
+    country: countryOut,
     latitude: { type: "number", minimum: -90, maximum: 90 },
     longitude: { type: "number", minimum: -180, maximum: 180 },
     created_at: { type: "string" },
@@ -29,7 +23,7 @@ export const cityOut = {
     "name",
     "slug",
     "state",
-    "country_id",
+    "country", // 👈 required country object
     "latitude",
     "longitude",
     "created_at",
@@ -38,12 +32,17 @@ export const cityOut = {
   additionalProperties: false,
 } as const;
 
-// GET /cities  (paginated with filters)
+// ----------------- List -----------------
 export const listCitiesSchema = {
   querystring: {
     type: "object",
     properties: {
-      country_id: iso2,
+      country: {
+        type: "string",
+        pattern: "^[A-Za-z]{2}$",
+        minLength: 2,
+        maxLength: 2,
+      }, // 👈 add country (ISO2)
       state: { type: "string", minLength: 1, maxLength: 10 },
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
@@ -74,13 +73,18 @@ export const listCitiesSchema = {
   },
 } as const;
 
-// GET /cities/search?q=
+// ----------------- Search -----------------
 export const searchCitiesSchema = {
   querystring: {
     type: "object",
     properties: {
       q: { type: "string", minLength: 1 },
-      country_id: iso2,
+      country: {
+        type: "string",
+        pattern: "^[A-Za-z]{2}$",
+        minLength: 2,
+        maxLength: 2,
+      }, // 👈 add country (ISO2)
       state: { type: "string", minLength: 1, maxLength: 10 },
       limit: { type: "integer", minimum: 1, maximum: 50, default: 20 },
     },
@@ -100,6 +104,7 @@ export const searchCitiesSchema = {
   },
 } as const;
 
+// ----------------- Params -----------------
 export const cityIdParams = {
   type: "object",
   properties: {
@@ -109,7 +114,29 @@ export const cityIdParams = {
   additionalProperties: false,
 } as const;
 
-// POST /cities
+// ----------------- Get By ID -----------------
+export const getCityByIdSchema = {
+  params: cityIdParams,
+  response: {
+    200: {
+      type: "object",
+      properties: { success: { type: "boolean" }, data: cityOut },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+    404: {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        message: { type: "string" },
+      },
+      required: ["success", "message"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+// ----------------- Create -----------------
 export const createCitySchema = {
   body: {
     type: "object",
@@ -117,11 +144,11 @@ export const createCitySchema = {
       name: nonEmpty,
       slug: nonEmpty,
       state: nonEmpty,
-      country_id: iso2,
+      country: { type: "string", pattern: "^[A-Za-z]{2}$" }, // 👈 input just ISO2
       latitude: { type: "number", minimum: -90, maximum: 90 },
       longitude: { type: "number", minimum: -180, maximum: 180 },
     },
-    required: ["name", "slug", "state", "country_id", "latitude", "longitude"],
+    required: ["name", "slug", "state", "country", "latitude", "longitude"],
     additionalProperties: false,
   } as const,
   response: {
@@ -134,6 +161,7 @@ export const createCitySchema = {
   },
 } as const;
 
+// ----------------- Update -----------------
 export const updateCitySchema = {
   params: cityIdParams,
   body: {
@@ -142,7 +170,7 @@ export const updateCitySchema = {
       name: nonEmpty,
       slug: nonEmpty,
       state: nonEmpty,
-      country_id: iso2,
+      country: { type: "string", pattern: "^[A-Za-z]{2}$" }, // 👈 update also accepts ISO2
       latitude: { type: "number", minimum: -90, maximum: 90 },
       longitude: { type: "number", minimum: -180, maximum: 180 },
     },
@@ -164,6 +192,7 @@ export const updateCitySchema = {
   },
 } as const;
 
+// ----------------- Types -----------------
 export type FromCreateCityBody = FromSchema<typeof createCitySchema.body>;
 export type FromUpdateCityBody = FromSchema<typeof updateCitySchema.body>;
 export type FromCityIdParams = FromSchema<typeof cityIdParams>;
