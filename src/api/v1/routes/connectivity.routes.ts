@@ -1,3 +1,5 @@
+// /routes/connectivity.routes.ts
+
 import { FastifyInstance } from "fastify";
 import {
   connectSchema,

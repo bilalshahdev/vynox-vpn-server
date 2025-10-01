@@ -1,3 +1,5 @@
+// /controllers/connectivity.controller.ts
+
 import { FastifyReply, FastifyRequest } from "fastify";
 import {
   FromConnectBody,
@@ -13,11 +15,14 @@ export async function serverListWithStats(
   req: FastifyRequest<{ Querystring: FromServersWithStatsQuery }>,
   reply: FastifyReply
 ) {
-  const { page = 1, limit = 50 } = req.query;
+  const { page = 1, limit = 50, os_type, search } = req.query;
 
-  const result = await S.getServersWithConnectionStats(page, limit, {
-    redis: req.server.redis,
-  });
+  const result = await S.getServersWithConnectionStats(
+    page,
+    limit,
+    { redis: req.server.redis },
+    { os_type, search } // <-- pass new filters
+  );
 
   return reply.send(result);
 }

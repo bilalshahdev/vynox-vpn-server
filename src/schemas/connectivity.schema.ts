@@ -1,3 +1,5 @@
+// /schemas/connectivity.schema.ts
+
 import { FromSchema } from "json-schema-to-ts";
 
 export const paramsWithIdSchema = {
@@ -205,12 +207,13 @@ export const serverWithActiveSchema = {
           type: "object",
           properties: {
             _id: { type: "string" },
-            name: { type: "string" }, // adjust fields based on your ServerModel
-            region: { type: "string" },
+            name: { type: "string" },
+            country: { type: "string" },
+            city: { type: "string" },
             activeConnections: { type: "integer" },
           },
-          required: ["_id", "name", "region", "activeConnections"],
-          additionalProperties: true,
+          required: ["_id", "name", "country", "city", "activeConnections"],
+          additionalProperties: false,
         },
       },
       required: ["success", "data"],
@@ -218,7 +221,10 @@ export const serverWithActiveSchema = {
     },
     404: {
       type: "object",
-      properties: { success: { type: "boolean" }, message: { type: "string" } },
+      properties: {
+        success: { type: "boolean" },
+        message: { type: "string" },
+      },
       required: ["success", "message"],
       additionalProperties: false,
     },
@@ -232,6 +238,8 @@ export const serversWithStatsSchema = {
     properties: {
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+      os_type: { type: "string", enum: ["android", "ios"] }, // ✅ new
+      search: { type: "string" }, // ✅ new (matches city/country/name)
     },
     additionalProperties: false,
   } as const,
@@ -260,8 +268,12 @@ export const serversWithStatsSchema = {
                 type: "object",
                 properties: {
                   _id: { type: "string" },
+                  name: { type: "string" },
+                  country: { type: "string" },
+                  city: { type: "string" },
+                  os_type: { type: "string", enum: ["android", "ios"] },
                 },
-                required: ["_id"],
+                required: ["_id", "name", "country", "city", "os_type"],
                 additionalProperties: true,
               },
               connections: {

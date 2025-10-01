@@ -46,20 +46,18 @@ const serverSchema = new Schema<IServer>(
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
-// existing
-serverSchema.index({
-  "general.os_type": 1,
-  "general.is_pro": 1,
-  "general.mode": 1,
-  created_at: 1,
-});
-serverSchema.index({ "general.is_pro": 1, created_at: 1 });
-
-// NEW: unique per (os_type, ip)
 serverSchema.index(
   { "general.os_type": 1, "general.ip": 1 },
   { unique: true, name: "uniq_os_type_ip" }
 );
+serverSchema.index({ "general.os_type": 1, created_at: -1 });
+serverSchema.index(
+  { "general.name": "text", "general.city": "text", "general.country": "text" },
+  { name: "text_search_server_locale" }
+);
+// Add only if needed by queries:
+serverSchema.index({ "general.mode": 1, created_at: -1 });
+serverSchema.index({ "general.is_pro": 1, created_at: -1 });
 
 export const ServerModel =
   models.Server || model<IServer>("Server", serverSchema);

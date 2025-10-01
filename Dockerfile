@@ -32,5 +32,7 @@
     COPY package*.json ./
     RUN npm install --only=production
     COPY --from=build /usr/src/app/dist ./dist
+    COPY --from=build /usr/src/app/public ./public
+
     CMD ["npm", "run", "start"]
     

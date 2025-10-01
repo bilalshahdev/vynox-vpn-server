@@ -1,3 +1,5 @@
+// /services/connectivity.service.ts
+
 import type Redis from "ioredis";
 import { FilterQuery } from "mongoose";
 import { ConnectivityModel } from "../models/connectivity.model";
@@ -35,59 +37,100 @@ const DEFAULT_OPEN_PAIR_TTL = 15;
 
 const DEFAULT_TTL = 15; // short cache for dashboards
 
+// /services/connectivity.service.ts
+
+type ServerStatsFilter = {
+  os_type?: "android" | "ios";
+  search?: string; // matches general.city, general.country, general.name (case-insensitive)
+};
+
+// NOTE: kept the original param order to avoid breaking callers
 export async function getServersWithConnectionStats(
   page = 1,
   limit = 50,
-  deps: CacheDeps = {}
+  deps: CacheDeps = {},
+  filter: ServerStatsFilter = {}
 ) {
   const { redis, ttlSec = DEFAULT_TTL } = deps;
 
-  const verConnectivity = await getCollectionVersion(redis);
+  // Build server match (filters)
+  const serverMatch: Record<string, any> = {};
+  if (filter.os_type) serverMatch["general.os_type"] = filter.os_type;
+
+  if (filter.search && filter.search.trim().length > 0) {
+    const safe = filter.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(safe, "i");
+    serverMatch.$or = [
+      { "general.city": re },
+      { "general.country": re },
+      { "general.name": re },
+    ];
+  }
+
+  const versionBundle = await getCollectionVersion(redis);
+
   const cacheKey = CacheKeys.list(
-    verConnectivity,
+    versionBundle,
     hashKey(
-      stableStringify({ k: "servers-with-connection-stats", page, limit })
+      stableStringify({
+        k: "servers-with-connection-stats",
+        page,
+        limit,
+        os_type: filter.os_type ?? null,
+        search: filter.search?.trim() || null,
+      })
     )
   );
 
   const cached = await getJSON<any>(redis, cacheKey);
   if (cached) return cached;
 
-  // aggregate total + active counts
-  const counts = await ConnectivityModel.aggregate([
-    {
-      $group: {
-        _id: "$server_id",
-        total: { $sum: 1 },
-        active: {
-          $sum: {
-            $cond: [
-              {
-                $or: [
-                  { $eq: ["$disconnected_at", null] },
-                  { $not: ["$disconnected_at"] },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-      },
-    },
-  ]);
+  // Total after filters
+  const totalServers = await ServerModel.countDocuments(serverMatch);
 
-  const countMap = new Map<string, { total: number; active: number }>();
-  for (const c of counts) {
-    countMap.set(String(c._id), { total: c.total ?? 0, active: c.active ?? 0 });
-  }
-
-  // pagination
-  const totalServers = await ServerModel.countDocuments();
-  const servers = await ServerModel.find()
+  // Page after filters – only return minimal fields we need
+  const servers = await ServerModel.find(serverMatch)
+    .select({ _id: 1, general: 1 })
     .skip((page - 1) * limit)
     .limit(limit)
     .lean();
+
+  const serverIds = servers.map((s: any) => String(s._id));
+
+  // Aggregate connectivity only for the page’s servers
+  let countMap = new Map<string, { total: number; active: number }>();
+  if (serverIds.length > 0) {
+    const counts = await ConnectivityModel.aggregate([
+      { $match: { server_id: { $in: serverIds } } },
+      {
+        $group: {
+          _id: "$server_id",
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$disconnected_at", null] },
+                    { $not: ["$disconnected_at"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    countMap = new Map(
+      counts.map((c: any) => [
+        String(c._id),
+        { total: c.total ?? 0, active: c.active ?? 0 },
+      ])
+    );
+  }
 
   const items = servers.map((s: any) => {
     const stats = countMap.get(String(s._id)) || { total: 0, active: 0 };

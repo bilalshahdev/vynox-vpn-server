@@ -18,17 +18,7 @@ export const cityOut = {
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
-  required: [
-    "_id",
-    "name",
-    "slug",
-    "state",
-    "country", // 👈 required country object
-    "latitude",
-    "longitude",
-    "created_at",
-    "updated_at",
-  ],
+  required: [],
   additionalProperties: false,
 } as const;
 
@@ -47,6 +37,7 @@ export const listCitiesSchema = {
       page: { type: "integer", minimum: 1, default: 1 },
       limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
     },
+    required: [],
     additionalProperties: false,
   } as const,
   response: {

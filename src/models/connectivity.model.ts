@@ -27,16 +27,17 @@ connectivitySchema.path("disconnected_at").validate(function (v: Date | null) {
   return this.connected_at && v.getTime() >= this.connected_at.getTime();
 }, "disconnected_at cannot be earlier than connected_at");
 
-// Query patterns
-connectivitySchema.index({ user_id: 1, server_id: 1, connected_at: -1 });
-connectivitySchema.index({ user_id: 1, connected_at: -1 });
-connectivitySchema.index({ server_id: 1, connected_at: -1 });
-
-// Enforce single open session per (user, server)
 connectivitySchema.index(
   { user_id: 1, server_id: 1, disconnected_at: 1 },
-  { unique: true, partialFilterExpression: { disconnected_at: null } }
+  {
+    unique: true,
+    partialFilterExpression: { disconnected_at: null },
+    name: "uniq_open_session",
+  }
 );
+connectivitySchema.index({ user_id: 1, connected_at: -1 });
+connectivitySchema.index({ server_id: 1, connected_at: -1 });
+connectivitySchema.index({ connected_at: -1 }); // optional, only if needed
 
 export const ConnectivityModel =
   models.Connectivity ||
