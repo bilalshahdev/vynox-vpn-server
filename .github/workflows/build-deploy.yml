@@ -62,7 +62,7 @@ jobs:
           script_stop: true
           script: |
             set -e
-            cd /opt/vynox-vpn-server
+            cd /opt/vynox
 
             # Pin image to the exact commit for safe rollbacks
             IMAGE="ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
