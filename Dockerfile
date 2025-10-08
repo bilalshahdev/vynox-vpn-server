@@ -1,38 +1,29 @@
-# ----------------------
-# Base image (common deps)
-# ----------------------
-    FROM node:22-alpine AS base
-    WORKDIR /usr/src/app
-    COPY package*.json ./
-    RUN npm install
-    
-    # ----------------------
-    # Development stage
-    # ----------------------
-    FROM base AS dev
-    WORKDIR /usr/src/app
-    RUN npm install -g ts-node nodemon
-    # 👇 only copy metadata, code comes from mounted volumes
-    COPY package*.json tsconfig.json ./
-    CMD ["npm", "run", "dev"]
-    
-    # ----------------------
-    # Build stage
-    # ----------------------
-    FROM base AS build
-    WORKDIR /usr/src/app
-    COPY . .
-    RUN npm run build
-    
-    # ----------------------
-    # Production stage
-    # ----------------------
-    FROM node:22-alpine AS prod
-    WORKDIR /usr/src/app
-    COPY package*.json ./
-    RUN npm install --only=production
-    COPY --from=build /usr/src/app/dist ./dist
-    COPY --from=build /usr/src/app/public ./public
+# ---------- Builder ----------
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache python3 make g++  # only if native deps appear
 
-    CMD ["npm", "run", "start"]
-    
+COPY package*.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY public ./public
+RUN npm run build   # -> dist/
+
+# ---------- Runtime ----------
+FROM node:20-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# copy minimal artifacts
+COPY --from=builder /app/package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
+
+# Health/metrics friendly defaults
+ENV PORT=2025
+EXPOSE 2025
+CMD ["node", "dist/server.js"]

@@ -49,12 +49,22 @@ function toListItem(doc: IServer & { _id: any }) {
   };
 }
 
+function toNullableConfig<T extends Record<string, any> | undefined | null>(
+  cfg: T
+) {
+  if (!cfg) return null;
+  const values = Object.values(cfg).filter(
+    (v) => v !== undefined && v !== null && v !== ""
+  );
+  return values.length ? (cfg as any) : null;
+}
+
 function toByIdItem(doc: IServer & { _id: any }) {
   const base = toListItem(doc);
   return {
     ...base,
-    openvpn_config: doc.openvpn_config,
-    wireguard_config: doc.wireguard_config,
+    openvpn_config: toNullableConfig(doc.openvpn_config),
+    wireguard_config: toNullableConfig(doc.wireguard_config),
   };
 }
 
@@ -350,15 +360,15 @@ export async function updateOpenVPNConfig(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
+
+  const $set: Record<string, any> = {};
+  if ("username" in cfg) $set["openvpn_config.username"] = cfg.username;
+  if ("password" in cfg) $set["openvpn_config.password"] = cfg.password;
+  if ("config" in cfg) $set["openvpn_config.config"] = cfg.config;
+
   const doc = await ServerModel.findByIdAndUpdate(
     id,
-    {
-      $set: {
-        "openvpn_config.username": cfg.username,
-        "openvpn_config.password": cfg.password,
-        "openvpn_config.config": cfg.config,
-      },
-    },
+    Object.keys($set).length ? { $set } : {},
     { new: true, runValidators: true }
   ).lean();
 
@@ -375,14 +385,14 @@ export async function updateWireguardConfig(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
+
+  const $set: Record<string, any> = {};
+  if ("address" in cfg) $set["wireguard_config.address"] = cfg.address;
+  if ("config" in cfg) $set["wireguard_config.config"] = cfg.config;
+
   const doc = await ServerModel.findByIdAndUpdate(
     id,
-    {
-      $set: {
-        "wireguard_config.address": cfg.address,
-        "wireguard_config.config": cfg.config,
-      },
-    },
+    Object.keys($set).length ? { $set } : {},
     { new: true, runValidators: true }
   ).lean();
 
@@ -405,19 +415,6 @@ export async function deleteServer(id: string, deps: CacheDeps = {}) {
 
 function flagOf(country_code?: string) {
   return country_code ? `${country_code.toLowerCase()}.png` : "";
-}
-
-function extractUpdatedCountryCode(
-  update: UpdateQuery<IServer>
-): string | undefined {
-  const nested = (update as any)?.general?.country_code;
-  const setStyle = (update as any)?.$set?.["general.country_code"];
-  return nested ?? setStyle;
-}
-function extractUpdatedIP(update: UpdateQuery<IServer>): string | undefined {
-  const nested = (update as any)?.general?.ip;
-  const setStyle = (update as any)?.$set?.["general.ip"];
-  return nested ?? setStyle;
 }
 
 /** Normalize `general: { ... }` into `$set` to avoid overwriting the whole subdoc */

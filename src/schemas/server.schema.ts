@@ -82,14 +82,23 @@ const serverFlatBase = {
 const serverListItemSchema = serverFlatBase;
 
 // By-ID output = flattened server WITH optional VPN configs
-const serverByIdOutSchema = {
+const openvpnConfigOrNull = {
+  anyOf: [openvpnConfigSchema, { type: "null" }],
+} as const;
+
+const wireguardConfigOrNull = {
+  anyOf: [wireguardConfigSchema, { type: "null" }],
+} as const;
+
+// By-ID output = flattened server WITH optional VPN configs
+export const serverByIdOutSchema = {
   ...serverFlatBase,
   properties: {
     ...serverFlatBase.properties,
-    openvpn_config: openvpnConfigSchema,
-    wireguard_config: wireguardConfigSchema,
+    openvpn_config: openvpnConfigOrNull,
+    wireguard_config: wireguardConfigOrNull,
   },
-  // VPN configs remain optional
+  // both remain optional and may be null
 } as const;
 
 // ---------- List (grouped by country) ----------
@@ -203,8 +212,8 @@ const serverOutSchema = {
         "os_type",
       ],
     },
-    openvpn_config: openvpnConfigSchema,
-    wireguard_config: wireguardConfigSchema,
+    openvpn_config: openvpnConfigOrNull,
+    wireguard_config: wireguardConfigOrNull,
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
