@@ -27,9 +27,9 @@ export type FeedbackListFilter = {
 
 export type CreateFeedbackDTO = {
   reason: string;
-  server_id: string;
   review: string;
   os_type: "android" | "ios"
+  server_id?: string;
   rating?: number; // now optional
   network_type?: "wifi" | "mobile";
 };
@@ -110,7 +110,6 @@ export async function createFeedback(
 
   const payload: Partial<IFeedback> = {
     reason: dto.reason,
-    server_id: validateMongoId(dto.server_id),
     review: dto.review,
     os_type: dto.os_type,
   };

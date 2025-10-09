@@ -32,15 +32,7 @@ const feedbackOutSchema = {
     created_at: dateTime,
     updated_at: dateTime,
   },
-  required: [
-    "_id",
-    "reason",
-    "server_id",
-    "review",
-    "os_type",
-    "created_at",
-    "updated_at",
-  ],
+  required: ["_id", "reason", "review", "os_type", "created_at", "updated_at"],
   additionalProperties: false,
 } as const;
 
@@ -115,14 +107,14 @@ export const createFeedbackSchema = {
     type: "object",
     properties: {
       reason: { type: "string" },
-      requested_server: { type: "string" }, 
+      requested_server: { type: "string" },
       server_id: objectId,
-      rating: { type: "integer", minimum: 1, maximum: 5 }, 
+      rating: { type: "integer", minimum: 1, maximum: 5 },
       review: { type: "string" },
       os_type: osType,
-      network_type: networkType, 
+      network_type: networkType,
     },
-    required: ["reason", "server_id", "review", "os_type"], 
+    required: ["reason", "review", "os_type"],
     additionalProperties: false,
   } as const,
   response: {
