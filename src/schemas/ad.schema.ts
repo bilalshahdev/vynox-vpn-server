@@ -31,7 +31,6 @@ const adOutSchema = {
   },
   required: [
     "_id",
-    "type",
     "position",
     "status",
     "os_type",
