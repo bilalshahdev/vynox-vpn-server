@@ -9,7 +9,7 @@ export interface IFeedback extends Document {
   rating: number;
   review: string;
   additional_data?: Record<string, any>;
-  os_type: "android" | "ios"
+  os_type: "android" | "ios";
   datetime: Date;
   created_at: Date;
   updated_at: Date;
@@ -20,7 +20,7 @@ const feedbackSchema = new Schema<IFeedback>(
     reason: { type: String, required: true },
     network_type: { type: String, enum: ["wifi", "mobile"] },
     requested_server: { type: String },
-    server_id: { type: Schema.Types.ObjectId, ref: "Server", required: true },
+    server_id: { type: Schema.Types.ObjectId, ref: "Server" },
     rating: { type: Number, min: 1, max: 5 },
     review: { type: String, required: true },
     additional_data: { type: Schema.Types.Mixed },
