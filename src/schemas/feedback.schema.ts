@@ -32,7 +32,7 @@ const feedbackOutSchema = {
     created_at: dateTime,
     updated_at: dateTime,
   },
-  required: ["_id", "reason", "review", "os_type", "created_at", "updated_at"],
+  required: [],
   additionalProperties: false,
 } as const;
 
