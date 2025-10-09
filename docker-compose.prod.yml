@@ -1,9 +1,9 @@
 services:
   app:
-    image: ${APP_IMAGE} # e.g. ghcr.io/<org-or-user>/vynox-vpn-server:latest
-    container_name: vynox_server
+    image: "ghcr.io/bilalshahdev/vynox-vpn-server:1.0.0"
+    container_name: vynox_vpn_server
     ports:
-      - "${APP_PORT:-2025}:2025"
+      - "1110:1110"
     env_file:
       - ./.env.production
     depends_on:
@@ -15,7 +15,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "require('net').connect(process.env.PORT||2025).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+          "require('net').connect(process.env.PORT||1110).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
         ]
       interval: 10s
       timeout: 3s
@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: vynox_redis
+    container_name: vynox_vpn_redis
     ports:
       - "6379:6379"
     restart: unless-stopped
