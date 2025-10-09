@@ -73,10 +73,7 @@ export async function searchCountries(
 
 export async function createCountry(payload: any, deps: CacheDeps = {}) {
   const { redis } = deps;
-  // some decoration in console to make it more readable
-  console.log("\n\n\n")
-  console.log({payload: payload})
-  console.log("\n\n\n")
+
   const doc = await CountryModel.create({
     _id: payload.country_code.toUpperCase(),
     ...payload,
