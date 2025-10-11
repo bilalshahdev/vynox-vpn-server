@@ -15,7 +15,7 @@ import {
 
 export type ServerListFilter = {
   os_type?: "android" | "ios";
-  mode?: "test" | "live";
+  mode?: "test" | "live" | "off";
   search?: string;
 };
 
@@ -318,7 +318,7 @@ export async function updateServer(
 
 export async function setServerMode(
   id: string,
-  mode: "test" | "live",
+  mode: "test" | "live" | "off",
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;

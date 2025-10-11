@@ -52,7 +52,7 @@ const serverFlatBase = {
     flag: { type: "string" }, // e.g., "us.png" (frontend can prefix)
     city: { type: "string" },
     is_pro: { type: "boolean" },
-    mode: { type: "string", enum: ["test", "live"] },
+    mode: { type: "string", enum: ["test", "live", "off"] },
     ip: { type: "string" },
     latitude: { type: "number" },
     longitude: { type: "number" },
@@ -119,7 +119,7 @@ const querySchema = {
   type: "object",
   properties: {
     os_type: osType,
-    mode: { type: "string", enum: ["test", "live"] },
+    mode: { type: "string", enum: ["test", "live", "off"] },
     page: { type: "integer", minimum: 1, default: 1 },
     limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
     search: { type: "string" },
@@ -183,7 +183,7 @@ const generalSchema = {
     flag: { type: "string" },
     city: { type: "string" },
     is_pro: { type: "boolean" },
-    mode: { type: "string", enum: ["test", "live"] },
+    mode: { type: "string", enum: ["test", "live", "off"] },
     ip: { type: "string" },
     latitude: { type: "number" },
     longitude: { type: "number" },
@@ -289,7 +289,7 @@ export const updateServerModeSchema = {
   params: paramsWithIdSchema,
   body: {
     type: "object",
-    properties: { mode: { type: "string", enum: ["test", "live"] } },
+    properties: { mode: { type: "string", enum: ["test", "live", "off"] } },
     required: ["mode"],
     additionalProperties: false,
   } as const,

@@ -7,7 +7,7 @@ import dropdownRoutes from "./dropdown.routes";
 import pageRoutes from "./page.routes";
 import dashboardRoutes from "./dashboard.route";
 import authRoutes from "./auth.route";
-import redisRoutes from "./redis.routes";
+import otherRoutes from "./other.routes";
 import countryRoutes from "./country.route";
 import cityRoutes from "./city.route";
 import faqRoutes from "./faq.route";
@@ -26,5 +26,5 @@ export default async function usersRoutesV1(app: FastifyInstance) {
   await app.register(dropdownRoutes, { prefix: "/dropdowns" });
   await app.register(pageRoutes, { prefix: "/pages" });
   await app.register(faqRoutes, { prefix: "/faqs" });
-  await app.register(redisRoutes, { prefix: "/redis" });
+  await app.register(otherRoutes, { prefix: "/" });
 }
