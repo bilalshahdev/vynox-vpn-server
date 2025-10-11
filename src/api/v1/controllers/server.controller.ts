@@ -9,8 +9,11 @@ import {
   FromUpdateIsProBody,
   FromUpdateOpenVPNConfigBody,
   FromUpdateWireguardConfigBody,
+  FromCreateMultipleServersBody,
 } from "../../../schemas/server.schema";
 import * as S from "../../../services/server.service";
+import { ServerModel } from "../../../models/server.model";
+import { sendServerDownEmail } from "../../../utils/sendServerDownEmail";
 
 export async function listServers(
   req: FastifyRequest<{ Querystring: FromListServersQuery }>,
@@ -62,6 +65,32 @@ export async function create(
     redis: req.server.redis,
   });
   return reply.code(201).send({ success: true, data: server });
+}
+
+export async function createMultiple(
+  req: FastifyRequest<{ Body: FromCreateMultipleServersBody }>,
+  reply: FastifyReply
+) {
+  const serversData = req.body;
+
+  const results = [];
+  for (const payload of serversData) {
+    try {
+      const server = await S.createServer(payload as any, {
+        redis: req.server.redis,
+      });
+      results.push(server);
+    } catch (err: any) {
+      // you could skip, or push error info
+      results.push({
+        error: err.message,
+        ip: payload.general?.ip,
+        os_type: payload.general?.os_type,
+      });
+    }
+  }
+
+  return reply.code(201).send({ success: true, data: results });
 }
 
 export async function update(
@@ -150,4 +179,32 @@ export async function remove(
       .code(404)
       .send({ success: false, message: "Server not found" });
   return reply.send({ success: true });
+}
+
+export async function ServerDown(
+  req: FastifyRequest<{ Params: { ip: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  try {
+    const { ip } = req.params;
+
+    const exists = await ServerModel.findOne({ "general.ip": ip });
+    if (!exists) {
+      return reply
+        .status(404)
+        .send({ message: `No server found for IP: ${ip}` });
+    }
+
+    await sendServerDownEmail(ip);
+
+    return reply
+      .status(200)
+      .send({ message: `Alert sent for server down at IP: ${ip}` });
+  } catch (error) {
+    console.error("ServerDown Error:", error);
+    const err = error as Error;
+    return reply
+      .status(500)
+      .send({ error: err.message || "Internal Server Error" });
+  }
 }

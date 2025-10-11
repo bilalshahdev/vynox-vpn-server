@@ -12,6 +12,7 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
+import { FromSchema } from "json-schema-to-ts";
 
 export type ServerListFilter = {
   os_type?: "android" | "ios";
@@ -71,19 +72,14 @@ function toByIdItem(doc: IServer & { _id: any }) {
 function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
   const q: FilterQuery<IServer> = {};
 
+  // OS filter
   if (filter.os_type) {
-    if (filter.os_type === "android") {
-      q["general.os_type"] = { $in: ["android"] };
-    } else if (filter.os_type === "ios") {
-      q["general.os_type"] = { $in: ["ios"] };
-    }
+    q["general.os_type"] = filter.os_type;
   }
 
-  // Mode filter with "test" meaning no restriction, "live" strict
+  // Mode filter (live | test | off)
   if (filter.mode) {
-    if (filter.mode === "live") {
-      q["general.mode"] = "live";
-    } // if "test", intentionally do nothing (fetch all)
+    q["general.mode"] = filter.mode;
   }
 
   // Search filter

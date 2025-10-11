@@ -356,6 +356,66 @@ export const updateWireguardConfigSchema = {
   },
 } as const;
 
+export const createMultipleServersSchema = {
+  body: {
+    type: "array",
+    items: createServerSchema.body, // reuse existing single server schema
+    minItems: 1,
+  } as const,
+  response: {
+    201: {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        data: {
+          type: "array",
+          items: serverOutSchema,
+        },
+      },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+export const serverDownSchema = {
+  params: {
+    type: "object",
+    required: ["ip"],
+    properties: {
+      ip: {
+        type: "string",
+        pattern: "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\\.|$)){4}$",
+        description: "IP address of the server that is down",
+      },
+    },
+  },
+  response: {
+    200: {
+      type: "object",
+      properties: {
+        message: { type: "string" },
+      },
+    },
+    404: {
+      type: "object",
+      properties: {
+        message: { type: "string" },
+      },
+    },
+    500: {
+      type: "object",
+      properties: {
+        error: { type: "string" },
+      },
+    },
+  },
+} as const;
+
+export type FromCreateMultipleServersBody = FromSchema<
+  typeof createMultipleServersSchema.body
+>;
+
 export type FromListServersQuery = FromSchema<typeof querySchema>;
 
 export type FromCreateServerBody = FromSchema<typeof createServerSchema.body>;
