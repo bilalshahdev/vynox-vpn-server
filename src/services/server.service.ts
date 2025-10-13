@@ -77,9 +77,15 @@ function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
     q["general.os_type"] = filter.os_type;
   }
 
-  // Mode filter (live | test | off)
+  // Mode filter
   if (filter.mode) {
-    q["general.mode"] = filter.mode;
+    if (filter.mode === "test") {
+      // If mode = test, return all (live, test, off)
+      q["general.mode"] = { $in: ["live", "test", "off"] };
+    } else {
+      // Otherwise, filter by the specific mode
+      q["general.mode"] = filter.mode;
+    }
   }
 
   // Search filter
@@ -95,6 +101,7 @@ function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
 
   return q;
 }
+
 
 export async function listServers(
   filter: ServerListFilter,
