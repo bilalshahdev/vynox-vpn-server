@@ -1,12 +1,11 @@
 // src/routes/city.route.ts
 import { FastifyInstance } from "fastify";
 import {
-  listCitiesSchema,
-  searchCitiesSchema,
   cityIdParams,
   createCitySchema,
-  updateCitySchema,
-  getCityByIdSchema,
+  listCitiesSchema,
+  searchCitiesSchema,
+  updateCitySchema
 } from "../../../schemas/city.schema";
 import * as CityController from "../controllers/city.controller";
 

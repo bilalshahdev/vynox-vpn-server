@@ -1,18 +1,17 @@
 // src/services/country.service.ts
 import type Redis from "ioredis";
-import { CityModel } from "../models/city.model";
-import { CountryModel, ICountry } from "../models/country.model";
-import { ServerModel } from "../models/server.model";
+import { CountryModel } from "../models/country.model";
 import {
-  bumpCollectionVersion,
   CacheKeys,
   getCollectionVersion,
   getJSON,
-  hashKey,
   setJSON,
+  hashKey,
   stableStringify,
+  bumpCollectionVersion,
 } from "../utils/cache";
-import { escapeRe, slugify } from "../utils/slugify";
+import { CityModel } from "../models/city.model";
+import { ServerModel } from "../models/server.model";
 
 type CacheDeps = { redis?: Redis; listTtlSec?: number; idTtlSec?: number };
 const DEFAULT_LIST_TTL = 300;
@@ -31,7 +30,7 @@ export async function listCountries(
   const cached = await getJSON<any>(redis, key);
   if (cached) return cached;
 
-  const cursor = CountryModel.find().lean<ICountry[]>().sort({ slug: 1 });
+  const cursor = CountryModel.find().lean().sort({ slug: 1 });
   const total = await CountryModel.countDocuments();
   const items = await cursor.skip((page - 1) * limit).limit(limit);
   const result = {
@@ -61,10 +60,10 @@ export async function searchCountries(
   const or = [
     { slug: new RegExp("^" + escapeRe(norm)) },
     { name: new RegExp("^" + escapeRe(q), "i") },
-    { _id: new RegExp("^" + escapeRe(q), "i") },
+    { _id: new RegExp("^" + escapeRe(q), "i") }, // ISO2
   ];
   const items = await CountryModel.find({ $or: or })
-    .lean<ICountry[]>()
+    .lean()
     .sort({ slug: 1 })
     .limit(limit);
   const result = { success: true, data: items };
@@ -74,6 +73,7 @@ export async function searchCountries(
 
 export async function createCountry(payload: any, deps: CacheDeps = {}) {
   const { redis } = deps;
+
   const doc = await CountryModel.create({
     _id: payload.country_code.toUpperCase(),
     ...payload,
@@ -81,47 +81,47 @@ export async function createCountry(payload: any, deps: CacheDeps = {}) {
   await bumpCollectionVersion(redis);
   return doc.toObject();
 }
-
 export async function updateCountry(
   id: string,
-  update: Partial<Pick<ICountry, "name" | "slug" | "flag">>,
+  update: any,
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
-
-  // 1) Update the country (do not change _id here)
-  const country = await CountryModel.findByIdAndUpdate(
-    id,
-    { $set: update },
-    { new: true, runValidators: true }
-  ).lean<ICountry>();
-  if (!country) return null;
-
-  // 2) Push denormalized fields to servers
-  await ServerModel.updateMany(
-    { "general.country_code": country._id },
-    {
-      $set: {
-        "general.country": country.name,
-        "general.flag": country.flag ?? "",
-      },
-    }
-  );
-
-  await bumpCollectionVersion(redis);
-  return country;
+  const doc = await CountryModel.findByIdAndUpdate(id, update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  if (doc) await bumpCollectionVersion(redis);
+  return doc;
 }
-
 export async function deleteCountry(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
 
+  // First delete the country
   const res = await CountryModel.findByIdAndDelete(id);
 
   if (res) {
-    await CityModel.deleteMany({ country: id });
+    // Cascade delete: all cities for this country
+    await CityModel.deleteMany({ country_id: id });
+
+    // Cascade delete: all servers for this country
     await ServerModel.deleteMany({ "general.country_code": id });
 
     await bumpCollectionVersion(redis);
   }
   return !!res;
+}
+
+// helpers
+function slugify(s: string) {
+  return s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
