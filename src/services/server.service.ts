@@ -12,7 +12,6 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
-import { FromSchema } from "json-schema-to-ts";
 
 export type ServerListFilter = {
   os_type?: "android" | "ios";
@@ -29,25 +28,77 @@ type CacheDeps = {
 const DEFAULT_LIST_TTL = 60;
 const DEFAULT_ID_TTL = 300;
 
-function toListItem(doc: IServer & { _id: any }) {
-  const g = doc.general;
+function flattenServer(serverDoc: any) {
+  console.log({ serverDoc });
+  if (!serverDoc) return null;
+
+  const country = serverDoc.country;
+  const city = serverDoc.city;
   return {
-    _id: String((doc as any)._id),
-    name: g.name,
-    categories: g.categories,
-    country: g.country,
-    country_code: g.country_code,
-    flag: flagOf(g.country_code),
-    city: g.city,
-    is_pro: g.is_pro,
-    mode: g.mode,
-    ip: g.ip,
-    latitude: g.latitude,
-    longitude: g.longitude,
-    os_type: g.os_type,
-    created_at: (doc as any).created_at,
-    updated_at: (doc as any).updated_at,
+    _id: serverDoc._id.toString(),
+    name: serverDoc.general.name,
+    categories: serverDoc.general.categories,
+    country_id: country._id,
+    country: country?.name ?? "",
+    country_code: country?._id ?? "",
+    flag: country?.flag ?? "",
+    city_id: city._id,
+    city: city?.name ?? "",
+    is_pro: serverDoc.general.is_pro,
+    mode: serverDoc.general.mode,
+    ip: serverDoc.general.ip,
+    latitude: city?.latitude ?? serverDoc.general.latitude ?? 0,
+    longitude: city?.longitude ?? serverDoc.general.longitude ?? 0,
+    os_type: serverDoc.general.os_type,
+    created_at: serverDoc.created_at.toISOString(),
+    updated_at: serverDoc.updated_at.toISOString(),
   };
+}
+
+function buildServerAggPipeline(filter: ServerListFilter) {
+  const q = buildServerQuery(filter);
+  const pipeline: any[] = [
+    { $match: q },
+    {
+      $lookup: {
+        from: "countries",
+        localField: "general.country_id",
+        foreignField: "_id",
+        as: "country",
+      },
+    },
+    { $unwind: "$country" },
+    {
+      $lookup: {
+        from: "cities",
+        localField: "general.city_id",
+        foreignField: "_id",
+        as: "city",
+      },
+    },
+    { $unwind: "$city" },
+  ];
+
+  if (filter.search) {
+    const regex = new RegExp(filter.search, "i");
+    pipeline.push({
+      $match: {
+        $or: [
+          { "general.name": regex },
+          { "city.name": regex },
+          { "country.name": regex },
+        ],
+      },
+    });
+  }
+
+  return pipeline;
+}
+
+function applyPagination(pipeline: any[], page: number, limit: number) {
+  pipeline.push({ $sort: { created_at: -1 } });
+  pipeline.push({ $skip: (page - 1) * limit });
+  pipeline.push({ $limit: limit });
 }
 
 function toNullableConfig<T extends Record<string, any> | undefined | null>(
@@ -61,7 +112,9 @@ function toNullableConfig<T extends Record<string, any> | undefined | null>(
 }
 
 function toByIdItem(doc: IServer & { _id: any }) {
-  const base = toListItem(doc);
+  const country = doc.general.country_id;
+  const city = doc.general.city_id;
+  const base = flattenServer({ ...doc, country, city });
   return {
     ...base,
     openvpn_config: toNullableConfig(doc.openvpn_config),
@@ -72,36 +125,20 @@ function toByIdItem(doc: IServer & { _id: any }) {
 function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
   const q: FilterQuery<IServer> = {};
 
-  // OS filter
   if (filter.os_type) {
     q["general.os_type"] = filter.os_type;
   }
 
-  // Mode filter
   if (filter.mode) {
     if (filter.mode === "test") {
-      // If mode = test, return all (live, test, off)
       q["general.mode"] = { $in: ["live", "test", "off"] };
     } else {
-      // Otherwise, filter by the specific mode
       q["general.mode"] = filter.mode;
     }
   }
 
-  // Search filter
-  if (filter.search?.trim()) {
-    const regex = new RegExp(filter.search.trim(), "i");
-    q.$or = [
-      { "general.name": regex },
-      { "general.country": regex },
-      { "general.city": regex },
-      { "general.ip": regex },
-    ];
-  }
-
   return q;
 }
-
 
 export async function listServers(
   filter: ServerListFilter,
@@ -111,26 +148,28 @@ export async function listServers(
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
 
-  const q = buildServerQuery(filter);
-
-  // Cache key (versioned)
   const ver = await getCollectionVersion(redis);
   const keyPayload = { type: "list", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
-  // Try cache
-  const cached = await getJSON<unknown>(redis, listKey);
-  if (cached) {
-    console.log("cache hit (list):", listKey);
-    return cached;
+  if (redis) {
+    const cached = await getJSON(redis, listKey);
+    if (cached) return cached;
   }
 
-  // DB hit
-  const cursor = ServerModel.find(q).lean().sort({ created_at: -1 });
-  const total = await ServerModel.countDocuments(q);
-  const docs = await cursor.skip((page - 1) * limit).limit(limit);
+  const pipeline = buildServerAggPipeline(filter);
 
-  const data = docs.map((d) => toListItem(d as any));
+  // Count total
+  const countPipeline = [
+    ...pipeline.filter((s) => !("$skip" in s || "$limit" in s)),
+  ];
+  countPipeline.push({ $count: "total" });
+  const countResult = await ServerModel.aggregate(countPipeline);
+  const total = countResult[0]?.total || 0;
+
+  applyPagination(pipeline, page, limit);
+  const serversAgg = await ServerModel.aggregate(pipeline);
+  const data = serversAgg.map(flattenServer);
 
   const result = {
     success: true,
@@ -138,7 +177,7 @@ export async function listServers(
     data,
   };
 
-  await setJSON(redis, listKey, result, listTtlSec);
+  if (redis) await setJSON(redis, listKey, result, listTtlSec);
   return result;
 }
 
@@ -150,72 +189,64 @@ export async function listGroupedServers(
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
 
-  const q = buildServerQuery(filter);
-
-  // Cache key (versioned)
   const ver = await getCollectionVersion(redis);
   const keyPayload = { type: "grouped", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
-  // Try cache
-  const cached = await getJSON<unknown>(redis, listKey);
-  if (cached) {
-    console.log("cache hit (grouped):", listKey);
-    return cached;
+  if (redis) {
+    const cached = await getJSON(redis, listKey);
+    if (cached) return cached;
   }
 
-  // DB hit
-  const cursor = ServerModel.find(q)
-    .lean()
-    .sort({ "general.country": 1, "general.city": 1, created_at: -1 });
+  const pipeline = buildServerAggPipeline(filter);
+  applyPagination(pipeline, 1, 1000); // fetch all for grouping
 
-  const total = await ServerModel.countDocuments(q);
-  const docs = await cursor.skip((page - 1) * limit).limit(limit);
+  const serversAgg = await ServerModel.aggregate(pipeline);
+  const grouped: Record<string, any> = {};
 
-  // Group by country
-  const grouped = new Map<
-    string,
-    { country: string; country_code: string; flag: string; servers: any[] }
-  >();
-
-  for (const d of docs) {
-    const item = toListItem(d as any);
-    const key = item.country;
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        country: item.country,
-        country_code: item.country_code,
-        flag: flagOf(item.country_code),
+  serversAgg.forEach((s) => {
+    const key = s.country._id;
+    if (!grouped[key]) {
+      grouped[key] = {
+        country: s.country.name,
+        country_code: s.country._id,
+        flag: s.country.flag,
         servers: [],
-      });
+      };
     }
-    grouped.get(key)!.servers.push(item);
-  }
+    grouped[key].servers.push(flattenServer(s));
+  });
 
-  const data = Array.from(grouped.values());
+  const groupedArray = Object.values(grouped);
+  const total = groupedArray.length;
+  const paginated = groupedArray.slice((page - 1) * limit, page * limit);
 
   const result = {
     success: true,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
-    data,
+    data: paginated,
   };
 
-  await setJSON(redis, listKey, result, listTtlSec);
+  if (redis) await setJSON(redis, listKey, result, listTtlSec);
   return result;
 }
 
 export async function getServerById(id: string, deps: CacheDeps = {}) {
+  console.log("heyyy");
   const { redis, idTtlSec = DEFAULT_ID_TTL } = deps;
   const idKey = CacheKeys.byId(id);
 
   // Try cache (already transformed)
   const cached = await getJSON<any>(redis, idKey);
-  if (cached) return cached;
+  // if (cached) return cached;
 
-  const doc = await ServerModel.findById(id).lean();
-  if (!doc) return null;
+  const serverDoc = await ServerModel.findById(id)
+    .populate("general.country_id")
+    .populate("general.city_id")
+    .lean();
+  if (!serverDoc) return null;
 
-  const shaped = toByIdItem(doc as any);
+  const shaped = toByIdItem(serverDoc as any);
 
   await setJSON(redis, idKey, shaped, idTtlSec);
   return shaped;

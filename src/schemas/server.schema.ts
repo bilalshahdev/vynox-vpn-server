@@ -2,6 +2,14 @@
 import { FromSchema } from "json-schema-to-ts";
 import { paginationSchema } from "./common";
 
+const OS_VALUES = ["android", "ios"] as const;
+const MODE_VALUES = ["test", "live", "off"] as const;
+const CATEGORY_VALUES = ["gaming", "streaming"] as const;
+
+const osType = { type: "string", enum: OS_VALUES } as const;
+const modeEnum = { type: "string", enum: MODE_VALUES } as const;
+const categoriesEnum = { type: "string", enum: CATEGORY_VALUES } as const;
+
 // ---------- Shared ----------
 export const paramsWithIdSchema = {
   type: "object",
@@ -10,12 +18,6 @@ export const paramsWithIdSchema = {
   },
   required: ["id"],
   additionalProperties: false,
-} as const;
-
-const osType = { type: "string", enum: ["android", "ios"] } as const;
-const categoriesEnum = {
-  type: "string",
-  enum: ["gaming", "streaming"],
 } as const;
 
 const openvpnConfigSchema = {
@@ -39,7 +41,7 @@ const wireguardConfigSchema = {
 
 /**
  * Flattened server shape (used for list items and by-id base)
- * NOTE: list items exclude VPN configs; by-id includes them optionally.
+ * This matches your public API response shape.
  */
 const serverFlatBase = {
   type: "object",
@@ -47,12 +49,14 @@ const serverFlatBase = {
     _id: { type: "string" },
     name: { type: "string" },
     categories: { type: "array", items: categoriesEnum, minItems: 1 },
+    country_id: { type: "string" },
     country: { type: "string" },
     country_code: { type: "string" },
-    flag: { type: "string" }, // e.g., "us.png" (frontend can prefix)
+    flag: { type: "string" }, 
+    city_id: { type: "string" },
     city: { type: "string" },
     is_pro: { type: "boolean" },
-    mode: { type: "string", enum: ["test", "live", "off"] },
+    mode: modeEnum,
     ip: { type: "string" },
     latitude: { type: "number" },
     longitude: { type: "number" },
@@ -85,12 +89,10 @@ const serverListItemSchema = serverFlatBase;
 const openvpnConfigOrNull = {
   anyOf: [openvpnConfigSchema, { type: "null" }],
 } as const;
-
 const wireguardConfigOrNull = {
   anyOf: [wireguardConfigSchema, { type: "null" }],
 } as const;
 
-// By-ID output = flattened server WITH optional VPN configs
 export const serverByIdOutSchema = {
   ...serverFlatBase,
   properties: {
@@ -98,7 +100,6 @@ export const serverByIdOutSchema = {
     openvpn_config: openvpnConfigOrNull,
     wireguard_config: wireguardConfigOrNull,
   },
-  // both remain optional and may be null
 } as const;
 
 // ---------- List (grouped by country) ----------
@@ -114,20 +115,19 @@ const countryGroupSchema = {
   additionalProperties: false,
 } as const;
 
-// Shared query schema
+// Shared query schema (unchanged)
 const querySchema = {
   type: "object",
   properties: {
     os_type: osType,
-    mode: { type: "string", enum: ["test", "live", "off"] },
+    mode: modeEnum,
     page: { type: "integer", minimum: 1, default: 1 },
     limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
-    search: { type: "string" },
+    search: { type: "string" }, // you can implement search against country/city name in service
   },
   additionalProperties: false,
 } as const;
 
-// Factory function to build list schema
 function createListSchema(dataSchema: any) {
   return {
     querystring: querySchema,
@@ -146,7 +146,6 @@ function createListSchema(dataSchema: any) {
   } as const;
 }
 
-// Now just call with the right data shape
 export const listServersSchema = createListSchema(serverListItemSchema);
 export const listGroupedServersSchema = createListSchema(countryGroupSchema);
 
@@ -172,43 +171,35 @@ export const getServerByIdSchema = {
   },
 } as const;
 
-// ---------- Create (keep as-is; returns full server doc shape if you prefer) ----------
-const generalSchema = {
+const generalInputSchema = {
   type: "object",
   properties: {
     name: { type: "string" },
     categories: { type: "array", items: categoriesEnum, minItems: 1 },
-    country: { type: "string" },
-    country_code: { type: "string" },
-    flag: { type: "string" },
-    city: { type: "string" },
+    country_id: { type: "string", description: "Country ISO2 (e.g., 'AU')" },
+    city_id: { type: "string", description: "City ObjectId as string" },
     is_pro: { type: "boolean" },
-    mode: { type: "string", enum: ["test", "live", "off"] },
+    mode: modeEnum,
     ip: { type: "string" },
-    latitude: { type: "number" },
-    longitude: { type: "number" },
     os_type: osType,
   },
   additionalProperties: false,
 } as const;
 
-const serverOutSchema = {
+const serverDocOutSchema = {
   type: "object",
   properties: {
     _id: { type: "string" },
     general: {
-      ...generalSchema,
+      ...generalInputSchema,
       required: [
         "name",
         "categories",
-        "country",
-        "city",
-        "country_code",
+        "country_id",
+        "city_id",
         "is_pro",
         "mode",
         "ip",
-        "latitude",
-        "longitude",
         "os_type",
       ],
     },
@@ -221,22 +212,19 @@ const serverOutSchema = {
   additionalProperties: false,
 } as const;
 
+// ---------- Create ----------
 export const createServerSchema = {
   body: {
     type: "object",
     properties: {
       general: {
-        ...generalSchema,
+        ...generalInputSchema,
         required: [
           "name",
           "categories",
-          "country",
-          "country_code",
-          "flag",
-          "city",
+          "country_id",
+          "city_id",
           "ip",
-          "latitude",
-          "longitude",
           "os_type",
         ],
       },
@@ -249,7 +237,11 @@ export const createServerSchema = {
   response: {
     201: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: {
+        success: { type: "boolean" },
+        data: serverDocOutSchema, // returns doc with IDs (recommended for admin)
+        // data: serverByIdOutSchema, // uncomment if you want flattened output here too
+      },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -262,7 +254,19 @@ export const updateServerSchema = {
   body: {
     type: "object",
     properties: {
-      general: generalSchema,
+      general: {
+        ...generalInputSchema,
+        required: [
+          "name",
+          "categories",
+          "country_id",
+          "city_id",
+          "ip",
+          "os_type",
+          "is_pro",
+          "mode",
+        ],
+      },
       openvpn_config: openvpnConfigSchema,
       wireguard_config: wireguardConfigSchema,
     },
@@ -271,7 +275,11 @@ export const updateServerSchema = {
   response: {
     200: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: {
+        success: { type: "boolean" },
+        data: serverDocOutSchema, // returns doc with IDs (recommended for admin)
+        // data: serverByIdOutSchema, // uncomment if you want flattened output here too
+      },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -289,14 +297,14 @@ export const updateServerModeSchema = {
   params: paramsWithIdSchema,
   body: {
     type: "object",
-    properties: { mode: { type: "string", enum: ["test", "live", "off"] } },
+    properties: { mode: modeEnum },
     required: ["mode"],
     additionalProperties: false,
   } as const,
   response: {
     200: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: { success: { type: "boolean" }, data: serverDocOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -315,7 +323,7 @@ export const updateServerIsProSchema = {
   response: {
     200: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: { success: { type: "boolean" }, data: serverDocOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -332,7 +340,7 @@ export const updateOpenVPNConfigSchema = {
   response: {
     200: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: { success: { type: "boolean" }, data: serverDocOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
@@ -349,17 +357,18 @@ export const updateWireguardConfigSchema = {
   response: {
     200: {
       type: "object",
-      properties: { success: { type: "boolean" }, data: serverOutSchema },
+      properties: { success: { type: "boolean" }, data: serverDocOutSchema },
       required: ["success", "data"],
       additionalProperties: false,
     },
   },
 } as const;
 
+// ---------- Create Multiple ----------
 export const createMultipleServersSchema = {
   body: {
     type: "array",
-    items: createServerSchema.body, // reuse existing single server schema
+    items: createServerSchema.body, // reuse
     minItems: 1,
   } as const,
   response: {
@@ -369,7 +378,7 @@ export const createMultipleServersSchema = {
         success: { type: "boolean" },
         data: {
           type: "array",
-          items: serverOutSchema,
+          items: serverDocOutSchema,
         },
       },
       required: ["success", "data"],
@@ -378,6 +387,7 @@ export const createMultipleServersSchema = {
   },
 } as const;
 
+// ---------- Server Down ----------
 export const serverDownSchema = {
   params: {
     type: "object",
@@ -393,46 +403,34 @@ export const serverDownSchema = {
   response: {
     200: {
       type: "object",
-      properties: {
-        message: { type: "string" },
-      },
+      properties: { message: { type: "string" } },
     },
     404: {
       type: "object",
-      properties: {
-        message: { type: "string" },
-      },
+      properties: { message: { type: "string" } },
     },
     500: {
       type: "object",
-      properties: {
-        error: { type: "string" },
-      },
+      properties: { error: { type: "string" } },
     },
   },
 } as const;
 
+// ---------- Types ----------
 export type FromCreateMultipleServersBody = FromSchema<
   typeof createMultipleServersSchema.body
 >;
-
 export type FromListServersQuery = FromSchema<typeof querySchema>;
-
 export type FromCreateServerBody = FromSchema<typeof createServerSchema.body>;
-
 export type FromUpdateServerBody = FromSchema<typeof updateServerSchema.body>;
-
 export type FromUpdateModeBody = FromSchema<typeof updateServerModeSchema.body>;
-
 export type FromUpdateIsProBody = FromSchema<
   typeof updateServerIsProSchema.body
 >;
-
 export type FromUpdateOpenVPNConfigBody = FromSchema<
   typeof updateOpenVPNConfigSchema.body
 >;
 export type FromUpdateWireguardConfigBody = FromSchema<
   typeof updateWireguardConfigSchema.body
 >;
-
 export type FromParamsWithId = FromSchema<typeof paramsWithIdSchema>;

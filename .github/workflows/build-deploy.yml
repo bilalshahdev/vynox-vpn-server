@@ -38,6 +38,7 @@ jobs:
           images: ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
+            type=raw,value=1.1
             type=sha
 
       - name: 🧱 Build and Push Docker Image to GHCR

@@ -12,6 +12,7 @@ import {
 } from "../utils/cache";
 import { CityModel } from "../models/city.model";
 import { ServerModel } from "../models/server.model";
+import { slugify, escapeRe } from "../utils/slugify";
 
 type CacheDeps = { redis?: Redis; listTtlSec?: number; idTtlSec?: number };
 const DEFAULT_LIST_TTL = 300;
@@ -110,18 +111,4 @@ export async function deleteCountry(id: string, deps: CacheDeps = {}) {
     await bumpCollectionVersion(redis);
   }
   return !!res;
-}
-
-// helpers
-function slugify(s: string) {
-  return s
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "-");
-}
-function escapeRe(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

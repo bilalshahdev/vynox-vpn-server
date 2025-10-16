@@ -1,22 +1,12 @@
 // src/controllers/server.controller.ts
 import { FastifyReply, FastifyRequest } from "fastify";
-import {
-  FromListServersQuery,
-  FromCreateServerBody,
-  FromUpdateServerBody,
-  FromParamsWithId,
-  FromUpdateModeBody,
-  FromUpdateIsProBody,
-  FromUpdateOpenVPNConfigBody,
-  FromUpdateWireguardConfigBody,
-  FromCreateMultipleServersBody,
-} from "../../../schemas/server.schema";
+import * as SCH from "../../../schemas/server.schema";
 import * as S from "../../../services/server.service";
 import { ServerModel } from "../../../models/server.model";
 import { sendServerDownEmail } from "../../../utils/sendServerDownEmail";
 
 export async function listServers(
-  req: FastifyRequest<{ Querystring: FromListServersQuery }>,
+  req: FastifyRequest<{ Querystring: SCH.FromListServersQuery }>,
   reply: FastifyReply
 ) {
   const { os_type, mode, search, page = 1, limit = 50 } = req.query;
@@ -27,7 +17,7 @@ export async function listServers(
 }
 
 export async function listGroupedServers(
-  req: FastifyRequest<{ Querystring: FromListServersQuery }>,
+  req: FastifyRequest<{ Querystring: SCH.FromListServersQuery }>,
   reply: FastifyReply
 ) {
   const { os_type, mode, search, page = 1, limit = 50 } = req.query;
@@ -43,7 +33,7 @@ export async function listGroupedServers(
 }
 
 export async function getById(
-  req: FastifyRequest<{ Params: FromParamsWithId }>,
+  req: FastifyRequest<{ Params: SCH.FromParamsWithId }>,
   reply: FastifyReply
 ) {
   const server = await S.getServerById(req.params.id, {
@@ -58,7 +48,7 @@ export async function getById(
 }
 
 export async function create(
-  req: FastifyRequest<{ Body: FromCreateServerBody }>,
+  req: FastifyRequest<{ Body: SCH.FromCreateServerBody }>,
   reply: FastifyReply
 ) {
   const server = await S.createServer(req.body as any, {
@@ -68,7 +58,7 @@ export async function create(
 }
 
 export async function createMultiple(
-  req: FastifyRequest<{ Body: FromCreateMultipleServersBody }>,
+  req: FastifyRequest<{ Body: SCH.FromCreateMultipleServersBody }>,
   reply: FastifyReply
 ) {
   const serversData = req.body;
@@ -94,7 +84,10 @@ export async function createMultiple(
 }
 
 export async function update(
-  req: FastifyRequest<{ Params: FromParamsWithId; Body: FromUpdateServerBody }>,
+  req: FastifyRequest<{
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateServerBody;
+  }>,
   reply: FastifyReply
 ) {
   const server = await S.updateServer(req.params.id, req.body, {
@@ -108,7 +101,10 @@ export async function update(
 }
 
 export async function updateMode(
-  req: FastifyRequest<{ Params: FromParamsWithId; Body: FromUpdateModeBody }>,
+  req: FastifyRequest<{
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateModeBody;
+  }>,
   reply: FastifyReply
 ) {
   const server = await S.setServerMode(req.params.id, req.body.mode, {
@@ -122,7 +118,10 @@ export async function updateMode(
 }
 
 export async function updateIsPro(
-  req: FastifyRequest<{ Params: FromParamsWithId; Body: FromUpdateIsProBody }>,
+  req: FastifyRequest<{
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateIsProBody;
+  }>,
   reply: FastifyReply
 ) {
   const server = await S.setServerIsPro(req.params.id, req.body.is_pro, {
@@ -137,8 +136,8 @@ export async function updateIsPro(
 
 export async function updateOpenVPNConfig(
   req: FastifyRequest<{
-    Params: FromParamsWithId;
-    Body: FromUpdateOpenVPNConfigBody;
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateOpenVPNConfigBody;
   }>,
   reply: FastifyReply
 ) {
@@ -154,8 +153,8 @@ export async function updateOpenVPNConfig(
 
 export async function updateWireguardConfig(
   req: FastifyRequest<{
-    Params: FromParamsWithId;
-    Body: FromUpdateWireguardConfigBody;
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateWireguardConfigBody;
   }>,
   reply: FastifyReply
 ) {
@@ -170,7 +169,7 @@ export async function updateWireguardConfig(
 }
 
 export async function remove(
-  req: FastifyRequest<{ Params: FromParamsWithId }>,
+  req: FastifyRequest<{ Params: SCH.FromParamsWithId }>,
   reply: FastifyReply
 ) {
   const ok = await S.deleteServer(req.params.id, { redis: req.server.redis });

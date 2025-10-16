@@ -11,6 +11,7 @@ import {
   stableStringify,
   bumpCollectionVersion,
 } from "../utils/cache";
+import { slugify, escapeRe } from "../utils/slugify";
 
 type CacheDeps = { redis?: Redis; listTtlSec?: number };
 const DEFAULT_LIST_TTL = 300;
@@ -169,19 +170,4 @@ export async function deleteCity(id: string, deps: CacheDeps = {}) {
   const res = await CityModel.findByIdAndDelete(id);
   if (res) await bumpCollectionVersion(redis);
   return !!res;
-}
-
-// ---------------- Helpers ----------------
-function slugify(s: string) {
-  return s
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "-");
-}
-
-function escapeRe(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
