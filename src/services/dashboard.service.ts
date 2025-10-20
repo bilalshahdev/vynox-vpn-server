@@ -97,8 +97,8 @@ export async function getDashboardStats(
     AdModel.countDocuments({ status: true }),
     AdModel.countDocuments({}),
     ConnectivityModel.countDocuments({
-      disconnected_at: null,
-      connected_at: { $lte: now },
+      // disconnected_at: null,
+      // connected_at: { $lte: now },
     }),
     ConnectivityModel.countDocuments({ connected_at: { $gte: last24h } }),
     FeedbackModel.countDocuments({ datetime: { $gte: last7d } }),
