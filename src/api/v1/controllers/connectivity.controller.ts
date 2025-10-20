@@ -21,7 +21,7 @@ export async function serverListWithStats(
     page,
     limit,
     { redis: req.server.redis },
-    { os_type, search } // <-- pass new filters
+    { os_type, search } 
   );
 
   return reply.send(result);

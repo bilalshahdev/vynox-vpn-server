@@ -44,7 +44,6 @@ type ServerStatsFilter = {
   search?: string; // matches general.city, general.country, general.name (case-insensitive)
 };
 
-// NOTE: kept the original param order to avoid breaking callers
 export async function getServersWithConnectionStats(
   page = 1,
   limit = 50,
@@ -53,27 +52,13 @@ export async function getServersWithConnectionStats(
 ) {
   const { redis, ttlSec = DEFAULT_TTL } = deps;
 
-  // Build server match (filters)
-  const serverMatch: Record<string, any> = {};
-  if (filter.os_type) serverMatch["general.os_type"] = filter.os_type;
-
-  if (filter.search && filter.search.trim().length > 0) {
-    const safe = filter.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(safe, "i");
-    serverMatch.$or = [
-      { "general.city": re },
-      { "general.country": re },
-      { "general.name": re },
-    ];
-  }
-
+  // --- Step 1. Cache key setup ---
   const versionBundle = await getCollectionVersion(redis);
-
   const cacheKey = CacheKeys.list(
     versionBundle,
     hashKey(
       stableStringify({
-        k: "servers-with-connection-stats",
+        k: "servers-with-connection-stats-v2",
         page,
         limit,
         os_type: filter.os_type ?? null,
@@ -85,72 +70,152 @@ export async function getServersWithConnectionStats(
   const cached = await getJSON<any>(redis, cacheKey);
   if (cached) return cached;
 
-  // Total after filters
-  const totalServers = await ServerModel.countDocuments(serverMatch);
+  // --- Step 2. Build filters ---
+  const match: any = {};
+  if (filter.os_type) match["general.os_type"] = filter.os_type;
 
-  // Page after filters – only return minimal fields we need
-  const servers = await ServerModel.find(serverMatch)
-    .select({ _id: 1, general: 1 })
-    .skip((page - 1) * limit)
-    .limit(limit)
-    .lean();
+  // --- Step 3. Construct pipeline ---
+  const safeSearch =
+    filter.search && filter.search.trim().length > 0
+      ? new RegExp(filter.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
+      : null;
 
-  const serverIds = servers.map((s: any) => String(s._id));
+  const pipeline: any[] = [
+    { $match: match },
 
-  // Aggregate connectivity only for the page’s servers
-  let countMap = new Map<string, { total: number; active: number }>();
-  if (serverIds.length > 0) {
-    const counts = await ConnectivityModel.aggregate([
-      { $match: { server_id: { $in: serverIds } } },
-      {
-        $group: {
-          _id: "$server_id",
-          total: { $sum: 1 },
-          active: {
-            $sum: {
-              $cond: [
-                {
-                  $or: [
-                    { $eq: ["$disconnected_at", null] },
-                    { $not: ["$disconnected_at"] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
-        },
+    // --- Join City ---
+    {
+      $lookup: {
+        from: "cities",
+        localField: "general.city_id",
+        foreignField: "_id",
+        as: "city",
+        pipeline: [{ $project: { _id: 1, name: 1 } }],
       },
-    ]);
+    },
+    { $unwind: "$city" },
 
-    countMap = new Map(
-      counts.map((c: any) => [
-        String(c._id),
-        { total: c.total ?? 0, active: c.active ?? 0 },
-      ])
-    );
+    // --- Join Country ---
+    {
+      $lookup: {
+        from: "countries",
+        localField: "general.country_id",
+        foreignField: "_id",
+        as: "country",
+        pipeline: [{ $project: { _id: 1, name: 1 } }],
+      },
+    },
+    { $unwind: "$country" },
+  ];
+
+  // --- Step 4. Search filter (optional) ---
+  if (safeSearch) {
+    pipeline.push({
+      $match: {
+        $or: [
+          { "city.name": safeSearch },
+          { "country.name": safeSearch },
+          { "general.name": safeSearch },
+        ],
+      },
+    });
   }
 
-  const items = servers.map((s: any) => {
-    const stats = countMap.get(String(s._id)) || { total: 0, active: 0 };
-    return {
-      server: { _id: s._id, ...s.general },
-      connections: { total: stats.total, active: stats.active },
-    };
+  // --- Step 5. Join connectivity counts ---
+  pipeline.push(
+    {
+      $lookup: {
+        from: "connectivities",
+        let: { sid: "$_id" },
+        pipeline: [
+          {
+            $match: { $expr: { $eq: ["$server_id", { $toString: "$$sid" }] } },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              active: {
+                $sum: {
+                  $cond: [
+                    {
+                      $or: [
+                        { $eq: ["$disconnected_at", null] },
+                        { $not: ["$disconnected_at"] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ],
+        as: "connections",
+      },
+    },
+    {
+      $addFields: {
+        connections: {
+          $ifNull: [{ $first: "$connections" }, { total: 0, active: 0 }],
+        },
+      },
+    }
+  );
+
+  // --- Step 6. Project fields for final output ---
+  pipeline.push({
+    $project: {
+      _id: 1,
+      name: "$general.name",
+      os_type: "$general.os_type",
+      country: "$country.name",
+      city: "$city.name",
+      connections: 1,
+    },
   });
 
+  // --- Step 7. Pagination ---
+  pipeline.push({
+    $facet: {
+      total: [{ $count: "count" }],
+      page: [
+        { $sort: { name: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ],
+    },
+  });
+
+  // --- Step 8. Execute aggregation ---
+  const [agg] = await ServerModel.aggregate(pipeline).allowDiskUse(true);
+
+  const total = agg?.total?.[0]?.count ?? 0;
+  const servers = agg?.page ?? [];
+
+  // --- Step 9. Format result ---
   const result = {
     success: true,
     pagination: {
       page,
       limit,
-      total: totalServers,
-      pages: Math.ceil(totalServers / limit) || 1,
+      total,
+      pages: Math.ceil(total / limit) || 1,
     },
-    data: items,
+    data: servers.map((s: any) => ({
+      server: {
+        _id: s._id,
+        name: s.name,
+        country: s.country || "",
+        city: s.city || "",
+        os_type: s.os_type,
+      },
+      connections: s.connections,
+    })),
   };
 
+  // --- Step 10. Cache + return ---
   await setJSON(redis, cacheKey, result, ttlSec);
   return result;
 }
