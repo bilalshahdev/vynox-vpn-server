@@ -1,6 +1,8 @@
 // src/services/server.service.ts
 import type Redis from "ioredis";
-import { FilterQuery, UpdateQuery } from "mongoose";
+import mongoose, { FilterQuery, UpdateQuery } from "mongoose";
+import { ConnectivityModel } from "../models/connectivity.model";
+import { FeedbackModel } from "../models/feedback.model";
 import { IServer, ServerModel } from "../models/server.model";
 import {
   bumpCollectionVersion,
@@ -29,7 +31,6 @@ const DEFAULT_LIST_TTL = 60;
 const DEFAULT_ID_TTL = 300;
 
 function flattenServer(serverDoc: any) {
-  console.log({ serverDoc });
   if (!serverDoc) return null;
 
   const country = serverDoc.country;
@@ -148,6 +149,9 @@ export async function listServers(
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
 
+  const keys = await redis?.keys("*");
+  console.log({keys});
+
   const ver = await getCollectionVersion(redis);
   const keyPayload = { type: "list", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
@@ -232,7 +236,6 @@ export async function listGroupedServers(
 }
 
 export async function getServerById(id: string, deps: CacheDeps = {}) {
-  console.log("heyyy");
   const { redis, idTtlSec = DEFAULT_ID_TTL } = deps;
   const idKey = CacheKeys.byId(id);
 
@@ -439,16 +442,38 @@ export async function updateWireguardConfig(
 
 export async function deleteServer(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
-  const res = await ServerModel.findByIdAndDelete(id);
-  if (res) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const server = await ServerModel.findByIdAndDelete(id, { session });
+    if (!server) {
+      await session.abortTransaction();
+      session.endSession();
+      return false;
+    }
+
+    // delete all referenced records
+    await Promise.all([
+      ConnectivityModel.deleteMany({ server_id: id }, { session }),
+      FeedbackModel.deleteMany({ server_id: id }, { session }),
+    ]);
+
+    // commit only if all succeeded
+    await session.commitTransaction();
+    session.endSession();
+
+    // update cache after success
     await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
-  }
-  return !!res;
-}
 
-function flagOf(country_code?: string) {
-  return country_code ? `${country_code.toLowerCase()}.png` : "";
+    return true;
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Delete server failed:", error);
+    return false;
+  }
 }
 
 /** Normalize `general: { ... }` into `$set` to avoid overwriting the whole subdoc */

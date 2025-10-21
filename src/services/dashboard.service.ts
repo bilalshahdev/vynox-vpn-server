@@ -36,12 +36,12 @@ async function setJSON(
   } catch {}
 }
 
-type OsBucket = "android" | "ios"
+type OsBucket = "android" | "ios";
 
 function normalizeByOsAgg(
   agg: Array<{ _id: string; count: number }>
 ): Record<OsBucket, number> {
-  const base: Record<OsBucket, number> = { android: 0, ios: 0};
+  const base: Record<OsBucket, number> = { android: 0, ios: 0 };
   for (const { _id, count } of agg) {
     if (_id === "android" || _id === "ios") {
       base[_id] = count;
@@ -66,15 +66,13 @@ export async function getDashboardStats(
   const last7d = new Date(now.getTime() - 7 * day);
   const last30d = new Date(now.getTime() - 30 * day);
 
-  // --- Replace three countDocuments with ONE aggregation for by_os ---
   const byOsAggPromise = ServerModel.aggregate<{ _id: string; count: number }>([
     { $group: { _id: "$general.os_type", count: { $sum: 1 } } },
   ]);
 
-  // Parallelize everything
   const [
     totalServers,
-    byOsAgg, // <-- NEW
+    byOsAgg,
     liveServers,
     testServers,
     proServers,
@@ -118,14 +116,13 @@ export async function getDashboardStats(
         _id: 1,
         created_at: 1,
         "general.name": 1,
-        "general.city": 1,
-        "general.country": 1,
       })
       .sort({ created_at: -1 })
       .limit(recentLimit),
     ConnectivityModel.find({})
       .lean()
       .select({ _id: 1, user_id: 1, server_id: 1, connected_at: 1 })
+      .populate("server_id", "general.name general.os_type")
       .sort({ connected_at: -1 })
       .limit(recentLimit),
     FeedbackModel.find({})
@@ -135,8 +132,7 @@ export async function getDashboardStats(
       .limit(recentLimit),
   ]);
 
-  // Normalize aggregates
-  const byOs = normalizeByOsAgg(byOsAgg); // <-- always returns {android, ios}
+  const byOs = normalizeByOsAgg(byOsAgg);
   const avgRating30d = avgRatingAgg[0]?.avg
     ? Number(avgRatingAgg[0].avg.toFixed(2))
     : 0;
@@ -155,15 +151,13 @@ export async function getDashboardStats(
   const recent: Activity[] = [
     ...recentServers.map((s: any) => ({
       type: "server" as const,
-      title: `New server: ${s?.general?.name ?? s._id} (${
-        s?.general?.city ?? ""
-      }${s?.general?.country ? ", " + s.general.country : ""})`,
+      title: `New server: ${s?.general?.name ?? s._id}`,
       when: s.created_at,
       ref_id: String(s._id),
     })),
     ...recentConns.map((c: any) => ({
       type: "connectivity" as const,
-      title: `User connected (server ${c.server_id})`,
+      title: `User connected to ${c.server_id?.general?.os_type} server - ${c.server_id?.general?.name}`,
       when: c.connected_at,
       ref_id: String(c._id),
     })),

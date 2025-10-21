@@ -12,7 +12,7 @@ export interface IConnectivity extends Document {
 const connectivitySchema = new Schema<IConnectivity>(
   {
     user_id: { type: String, required: true, index: true },
-    server_id: { type: String, required: true, index: true },
+    server_id: { type: String, ref: "Server", required: true, index: true },
     connected_at: { type: Date, required: true },
     disconnected_at: { type: Date, default: null },
   },
