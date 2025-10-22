@@ -14,15 +14,14 @@ import {
 } from "../utils/cache";
 import { validateMongoId } from "../utils/validateMongoId";
 
-/** ---------------- Service API ---------------- */
 export type FeedbackListFilter = {
   server_id?: string;
   reason?: string;
   os_type?: "android" | "ios" 
   network_type?: "wifi" | "mobile";
   rating?: number;
-  from?: string; // ISO date
-  to?: string; // ISO date
+  from?: string; 
+  to?: string; 
 };
 
 export type CreateFeedbackDTO = {
@@ -30,14 +29,14 @@ export type CreateFeedbackDTO = {
   review: string;
   os_type: "android" | "ios"
   server_id?: string;
-  rating?: number; // now optional
+  rating?: number; 
   network_type?: "wifi" | "mobile";
 };
 
 type CacheDeps = {
   redis?: Redis;
-  listTtlSec?: number; // default 60
-  idTtlSec?: number; // default 300
+  listTtlSec?: number;
+  idTtlSec?: number;
 };
 
 const DEFAULT_LIST_TTL = 60;
@@ -55,7 +54,7 @@ export async function listFeedback(
   if (filter.server_id) q.server_id = validateMongoId(filter.server_id);
   if (filter.reason) q.reason = filter.reason;
   if (filter.os_type) q.os_type = filter.os_type;
-  if (filter.network_type) (q as any).network_type = filter.network_type; // new
+  if (filter.network_type) (q as any).network_type = filter.network_type;
   if (typeof filter.rating === "number") q.rating = filter.rating;
 
   if (filter.from || filter.to) {
@@ -72,8 +71,6 @@ export async function listFeedback(
 
   const cached = await getJSON<unknown>(redis, listKey);
   if (cached) return cached;
-
-  // const cursor = FeedbackModel.find(q).lean().sort({ created_at: -1, _id: -1 });
 
   const total = await FeedbackModel.countDocuments(q);
   const items = await cursor.skip((page - 1) * limit).limit(limit);
@@ -114,8 +111,8 @@ export async function createFeedback(
     os_type: dto.os_type,
   };
 
-  if (typeof dto.rating === "number") payload.rating = dto.rating; // optional
-  if (dto.network_type) (payload as any).network_type = dto.network_type; // new
+  if (typeof dto.rating === "number") payload.rating = dto.rating; 
+  if (dto.network_type) (payload as any).network_type = dto.network_type; 
 
   const created = await FeedbackModel.create(payload);
   await bumpCollectionVersion(redis);

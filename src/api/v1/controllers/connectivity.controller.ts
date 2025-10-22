@@ -4,7 +4,6 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import {
   FromConnectBody,
   FromDisconnectBody,
-  FromListConnectivityQuery,
   FromOpenByPairQuery,
   FromParamsWithId,
   FromServersWithStatsQuery,
@@ -21,23 +20,9 @@ export async function serverListWithStats(
     page,
     limit,
     { redis: req.server.redis },
-    { os_type, search } 
+    { os_type, search }
   );
 
-  return reply.send(result);
-}
-
-export async function list(
-  req: FastifyRequest<{ Querystring: FromListConnectivityQuery }>,
-  reply: FastifyReply
-) {
-  const { user_id, server_id, from, to, page = 1, limit = 50 } = req.query;
-  const result = await S.listConnectivity(
-    { user_id, server_id, from, to },
-    page,
-    limit,
-    { redis: req.server.redis }
-  );
   return reply.send(result);
 }
 

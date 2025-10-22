@@ -110,7 +110,7 @@ export async function createCity(
     name: string;
     slug: string;
     state: string;
-    country: string; // ISO2
+    country: string;
     latitude: number;
     longitude: number;
   },

@@ -37,48 +37,6 @@ const connectivityOutSchema = {
   additionalProperties: false,
 } as const;
 
-// ---------- List ----------
-export const listConnectivitySchema = {
-  querystring: {
-    type: "object",
-    properties: {
-      user_id: { type: "string" },
-      server_id: { type: "string" },
-      from: dateTime,
-      to: dateTime,
-      page: { type: "integer", minimum: 1, default: 1 },
-      limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
-    },
-    additionalProperties: false,
-  } as const,
-  response: {
-    200: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        pagination: {
-          type: "object",
-          properties: {
-            page: { type: "integer" },
-            limit: { type: "integer" },
-            total: { type: "integer" },
-            pages: { type: "integer" },
-          },
-          required: ["page", "limit", "total", "pages"],
-          additionalProperties: false,
-        },
-        data: { type: "array", items: connectivityOutSchema },
-      },
-      required: ["success", "pagination", "data"],
-      additionalProperties: false,
-    },
-  },
-} as const;
-
-export type FromListConnectivityQuery = FromSchema<
-  typeof listConnectivitySchema.querystring
->;
-
 // ---------- Get by ID ----------
 export const getConnectivityByIdSchema = {
   params: paramsWithIdSchema,

@@ -103,9 +103,28 @@ export default async function serverRoutes(app: FastifyInstance) {
     C.remove
   );
 
+  // DELETE /servers/bulk
+  app.delete<{ Body: S.FromDeleteMultipleServers }>(
+    "/bulk",
+    { schema: S.deleteMultipleServersSchema, preHandler: verifyToken },
+    C.removeMany
+  );
+
   app.post<{ Params: { ip: string } }>(
     "/server-down/:ip",
     { schema: S.serverDownSchema },
     C.ServerDown
+  );
+  app.get<{ Params: { ip: string } }>(
+    "/status/:ip",
+    {
+      schema: {
+        ...S.serverStatusSchema,
+        summary: "Stream real-time server stats",
+        description:
+          "Streams continuous status updates (RAM, CPU, usage, etc.) from a given server IP.",
+      },
+    },
+    C.streamServerStatus
   );
 }

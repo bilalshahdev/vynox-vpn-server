@@ -1,8 +1,8 @@
 // /services/connectivity.service.ts
 
 import type Redis from "ioredis";
-import { FilterQuery } from "mongoose";
 import { ConnectivityModel } from "../models/connectivity.model";
+import { ServerModel } from "../models/server.model";
 import {
   bumpCollectionVersion,
   CacheKeys,
@@ -13,9 +13,7 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
-import { ServerModel } from "../models/server.model";
 
-/** ---------------- Service API ---------------- */
 export type ConnectivityListFilter = {
   user_id?: string;
   server_id?: string;
@@ -31,17 +29,14 @@ type CacheDeps = {
   ttlSec?: number;
 };
 
-const DEFAULT_LIST_TTL = 30;
 const DEFAULT_ID_TTL = 120;
 const DEFAULT_OPEN_PAIR_TTL = 15;
 
-const DEFAULT_TTL = 15; // short cache for dashboards
-
-// /services/connectivity.service.ts
+const DEFAULT_TTL = 15;
 
 type ServerStatsFilter = {
   os_type?: "android" | "ios";
-  search?: string; // matches general.city, general.country, general.name (case-insensitive)
+  search?: string;
 };
 
 export async function getServersWithConnectionStats(
@@ -52,13 +47,12 @@ export async function getServersWithConnectionStats(
 ) {
   const { redis, ttlSec = DEFAULT_TTL } = deps;
 
-  // --- Step 1. Cache key setup ---
   const versionBundle = await getCollectionVersion(redis);
   const cacheKey = CacheKeys.list(
     versionBundle,
     hashKey(
       stableStringify({
-        k: "servers-with-connection-stats-v2",
+        k: "servers-with-connection-stats-v3",
         page,
         limit,
         os_type: filter.os_type ?? null,
@@ -70,32 +64,17 @@ export async function getServersWithConnectionStats(
   const cached = await getJSON<any>(redis, cacheKey);
   if (cached) return cached;
 
-  // --- Step 2. Build filters ---
   const match: any = {};
   if (filter.os_type) match["general.os_type"] = filter.os_type;
 
-  // --- Step 3. Construct pipeline ---
   const safeSearch =
-    filter.search && filter.search.trim().length > 0
+    filter.search?.trim() && filter.search.length > 0
       ? new RegExp(filter.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
       : null;
 
   const pipeline: any[] = [
     { $match: match },
 
-    // --- Join City ---
-    {
-      $lookup: {
-        from: "cities",
-        localField: "general.city_id",
-        foreignField: "_id",
-        as: "city",
-        pipeline: [{ $project: { _id: 1, name: 1 } }],
-      },
-    },
-    { $unwind: "$city" },
-
-    // --- Join Country ---
     {
       $lookup: {
         from: "countries",
@@ -106,30 +85,41 @@ export async function getServersWithConnectionStats(
       },
     },
     { $unwind: "$country" },
+
+    {
+      $lookup: {
+        from: "cities",
+        localField: "general.city_id",
+        foreignField: "_id",
+        as: "city",
+        pipeline: [{ $project: { _id: 1, name: 1 } }],
+      },
+    },
+    { $unwind: "$city" },
   ];
 
-  // --- Step 4. Search filter (optional) ---
   if (safeSearch) {
     pipeline.push({
       $match: {
         $or: [
+          { "general.name": safeSearch },
           { "city.name": safeSearch },
           { "country.name": safeSearch },
-          { "general.name": safeSearch },
         ],
       },
     });
   }
 
-  // --- Step 5. Join connectivity counts ---
   pipeline.push(
     {
       $lookup: {
         from: "connectivities",
-        let: { sid: "$_id" },
+        let: { sid: { $toString: "$_id" } },
         pipeline: [
           {
-            $match: { $expr: { $eq: ["$server_id", { $toString: "$$sid" }] } },
+            $match: {
+              $expr: { $eq: ["$server_id", "$$sid"] },
+            },
           },
           {
             $group: {
@@ -151,6 +141,7 @@ export async function getServersWithConnectionStats(
               },
             },
           },
+          { $project: { _id: 0, total: 1, active: 1 } },
         ],
         as: "connections",
       },
@@ -164,7 +155,6 @@ export async function getServersWithConnectionStats(
     }
   );
 
-  // --- Step 6. Project fields for final output ---
   pipeline.push({
     $project: {
       _id: 1,
@@ -176,11 +166,10 @@ export async function getServersWithConnectionStats(
     },
   });
 
-  // --- Step 7. Pagination ---
   pipeline.push({
     $facet: {
-      total: [{ $count: "count" }],
-      page: [
+      meta: [{ $count: "total" }],
+      data: [
         { $sort: { name: 1 } },
         { $skip: (page - 1) * limit },
         { $limit: limit },
@@ -188,13 +177,10 @@ export async function getServersWithConnectionStats(
     },
   });
 
-  // --- Step 8. Execute aggregation ---
   const [agg] = await ServerModel.aggregate(pipeline).allowDiskUse(true);
+  const total = agg?.meta?.[0]?.total ?? 0;
+  const data = agg?.data ?? [];
 
-  const total = agg?.total?.[0]?.count ?? 0;
-  const servers = agg?.page ?? [];
-
-  // --- Step 9. Format result ---
   const result = {
     success: true,
     pagination: {
@@ -203,7 +189,7 @@ export async function getServersWithConnectionStats(
       total,
       pages: Math.ceil(total / limit) || 1,
     },
-    data: servers.map((s: any) => ({
+    data: data.map((s: any) => ({
       server: {
         _id: s._id,
         name: s.name,
@@ -215,49 +201,7 @@ export async function getServersWithConnectionStats(
     })),
   };
 
-  // --- Step 10. Cache + return ---
   await setJSON(redis, cacheKey, result, ttlSec);
-  return result;
-}
-
-export async function listConnectivity(
-  filter: ConnectivityListFilter,
-  page = 1,
-  limit = 50,
-  deps: CacheDeps = {}
-) {
-  const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
-
-  const q: FilterQuery<any> = {};
-  if (filter.user_id) q.user_id = filter.user_id;
-  if (filter.server_id) q.server_id = filter.server_id;
-  if (filter.from || filter.to) {
-    q.connected_at = {};
-    if (filter.from) (q.connected_at as any).$gte = new Date(filter.from);
-    if (filter.to) (q.connected_at as any).$lte = new Date(filter.to);
-  }
-
-  const ver = await getCollectionVersion(redis);
-  const keyPayload = { ...filter, page, limit };
-  const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
-
-  const cached = await getJSON<any>(redis, listKey);
-  if (cached) return cached;
-
-  const cursor = ConnectivityModel.find(q)
-    .lean()
-    .sort({ connected_at: -1, created_at: -1 });
-
-  const total = await ConnectivityModel.countDocuments(q);
-  const items = await cursor.skip((page - 1) * limit).limit(limit);
-
-  const result = {
-    success: true,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
-    data: items,
-  };
-
-  await setJSON(redis, listKey, result, listTtlSec);
   return result;
 }
 
@@ -315,7 +259,6 @@ export async function connect(
       disconnected_at: null,
     });
 
-    // Invalidate caches
     await bumpCollectionVersion(redis);
     await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
 
@@ -335,7 +278,6 @@ export async function disconnect(
   const { redis } = deps;
   const now = new Date();
 
-  // Return a Document (no .lean()), then convert to POJO after cache work.
   const updatedDoc = await ConnectivityModel.findOneAndUpdate(
     {
       user_id: payload.user_id,
@@ -351,10 +293,10 @@ export async function disconnect(
     await bumpCollectionVersion(redis);
     await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
     await del(redis, CacheKeys.byId(String(updatedDoc._id)));
-    return updatedDoc.toObject(); // keep your service contract returning plain JSON
+    return updatedDoc.toObject();
   }
 
-  return null; // no open session found
+  return null;
 }
 
 export async function deleteConnectivity(id: string, deps: CacheDeps = {}) {

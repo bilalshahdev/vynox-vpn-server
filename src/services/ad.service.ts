@@ -13,9 +13,8 @@ import {
   stableStringify,
 } from "../utils/cache";
 
-/** ---------- Service API ---------- */
 export type AdListFilter = {
-  os_type?: "android" | "ios"
+  os_type?: "android" | "ios";
   type?: string;
   position?: string;
   status?: boolean;
@@ -44,7 +43,6 @@ export async function listAds(
   if (filter.position) q.position = filter.position;
   if (typeof filter.status === "boolean") q.status = filter.status;
 
-  // versioned list key
   const ver = await getCollectionVersion(redis);
   const keyPayload = { ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
@@ -90,7 +88,7 @@ export async function createAd(payload: Partial<IAd>, deps: CacheDeps = {}) {
   (error as any).statusCode = 409;
   if (existing) throw error;
   const created = await AdModel.create(payload as IAd);
-  await bumpCollectionVersion(redis); // invalidate lists
+  await bumpCollectionVersion(redis);
   return created.toObject();
 }
 
@@ -106,8 +104,8 @@ export async function updateAd(
   }).lean();
 
   if (doc) {
-    await del(redis, CacheKeys.byId(id)); // drop per-id cache
-    await bumpCollectionVersion(redis); // invalidate lists
+    await del(redis, CacheKeys.byId(id));
+    await bumpCollectionVersion(redis);
   }
   return doc;
 }

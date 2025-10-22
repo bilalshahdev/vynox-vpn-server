@@ -1,9 +1,11 @@
 // src/controllers/server.controller.ts
+import http from "http";
 import { FastifyReply, FastifyRequest } from "fastify";
 import * as SCH from "../../../schemas/server.schema";
 import * as S from "../../../services/server.service";
 import { ServerModel } from "../../../models/server.model";
 import { sendServerDownEmail } from "../../../utils/sendServerDownEmail";
+import { serverStatsPort } from "../../../config/constants";
 
 export async function listServers(
   req: FastifyRequest<{ Querystring: SCH.FromListServersQuery }>,
@@ -45,6 +47,49 @@ export async function getById(
       .code(404)
       .send({ success: false, message: "Server not found" });
   return reply.send({ success: true, data: server });
+}
+
+export async function streamServerStatus(
+  req: FastifyRequest<{ Params: { ip: string } }>,
+  reply: FastifyReply
+) {
+  const { ip } = req.params;
+
+  if (!serverStatsPort) {
+    return reply
+      .code(500)
+      .send({ success: false, message: "Server stats port not configured" });
+  }
+
+  const url = `http://${ip}:${serverStatsPort}/status`;
+
+  // Set up Server-Sent Events headers
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const request = http.get(url, (res) => {
+    res.on("data", (chunk) => {
+      reply.raw.write(chunk);
+    });
+
+    res.on("end", () => {
+      reply.raw.end();
+    });
+  });
+
+  request.on("error", (err) => {
+    console.error("Error connecting to status server:", err.message);
+    reply.raw.end(
+      `event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`
+    );
+  });
+
+  req.raw.on("close", () => {
+    request.destroy(); // stop when client disconnects
+  });
 }
 
 export async function create(
@@ -177,6 +222,22 @@ export async function remove(
     return reply
       .code(404)
       .send({ success: false, message: "Server not found" });
+  return reply.send({ success: true });
+}
+
+export async function removeMany(
+  req: FastifyRequest<{ Body: SCH.FromDeleteMultipleServers }>,
+  reply: FastifyReply
+) {
+  const { ids } = req.body;
+
+  const ok = await S.deleteMultipleServers(ids, { redis: req.server.redis });
+  if (!ok) {
+    return reply
+      .code(404)
+      .send({ success: false, message: "No servers deleted" });
+  }
+
   return reply.send({ success: true });
 }
 

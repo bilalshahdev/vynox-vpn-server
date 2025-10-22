@@ -5,7 +5,6 @@ import {
   connectSchema,
   disconnectSchema,
   getConnectivityByIdSchema,
-  listConnectivitySchema,
   openByPairQuerySchema,
   paramsWithIdSchema,
   serversWithStatsSchema,
@@ -26,9 +25,6 @@ export default async function connectivityRoutes(app: FastifyInstance) {
     { schema: serversWithStatsSchema },
     C.serverListWithStats
   );
-
-  // GET /connectivity
-  app.get("/", { schema: listConnectivitySchema }, C.list);
 
   // GET /connectivity/:id
   app.get("/:id", { schema: getConnectivityByIdSchema }, C.getById);

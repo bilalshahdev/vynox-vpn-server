@@ -147,7 +147,6 @@ function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// ensure unique slug; when updating, exclude current id
 async function generateUniqueSlug(base: string, excludeId?: string) {
   const re = new RegExp("^" + escapeRe(base) + "(?:-(\\d+))?$");
   const query: any = { slug: re };

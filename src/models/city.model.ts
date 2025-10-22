@@ -5,7 +5,7 @@ export interface ICity extends Document {
   name: string;
   slug: string;
   state: string;
-  country: string; // ref Country._id ("IN")
+  country: string;
   latitude: number;
   longitude: number;
   created_at: Date;
@@ -20,7 +20,7 @@ const CitySchema = new Schema<ICity>(
 
     country: {
       type: String,
-      ref: "Country", // 👈 directly reference Country model
+      ref: "Country",
       required: true,
       uppercase: true,
       trim: true,
@@ -32,11 +32,6 @@ const CitySchema = new Schema<ICity>(
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
-// indexes
-CitySchema.index({ country: 1, slug: 1 }, { unique: true });
-CitySchema.index({ country: 1, state: 1, name: 1 }, { unique: true });
-
-// normalize slug + uppercasing
 CitySchema.pre("validate", function (next) {
   if (!this.slug && this.name) {
     this.slug = this.name
@@ -53,7 +48,8 @@ CitySchema.pre("validate", function (next) {
   next();
 });
 
-// Ensure virtuals are included when converting to JSON
+CitySchema.index({ country: 1, state: 1, slug: 1 }, { unique: true });
+
 CitySchema.set("toObject", { virtuals: true });
 CitySchema.set("toJSON", { virtuals: true });
 

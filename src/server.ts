@@ -1,26 +1,12 @@
 // src/server.ts
 import { buildApp } from "./app";
 import { config } from "./config";
-import { run } from "./scripts/backfill-server-location-ids";
-import { run2 } from "./scripts/remove-legacy-server-fields";
 
 const server = buildApp();
 
 async function start() {
   try {
     await server.listen({ host: "0.0.0.0", port: config.app.port });
-    // run()
-    //   .then(() => {
-    //     console.log("Backfill complete");
-    //     process.exit(0);
-    //   })
-    //   .catch((e) => {
-    //     console.error(e);
-    //     process.exit(1);
-    //   });
-    // run2().catch((err) => {
-    //   console.error("Unhandled error:", err);
-    // });
     server.log.info(`🚀 Server running at http://localhost:${config.app.port}`);
   } catch (err) {
     console.log({

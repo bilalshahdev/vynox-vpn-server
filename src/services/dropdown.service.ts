@@ -22,9 +22,9 @@ export type DropdownListFilter = {
 
 type CacheDeps = {
   redis?: Redis;
-  listTtlSec?: number; // default 60
-  idTtlSec?: number; // default 300
-  nameTtlSec?: number; // default 300
+  listTtlSec?: number;
+  idTtlSec?: number;
+  nameTtlSec?: number;
 };
 
 const DEFAULT_LIST_TTL = 60;

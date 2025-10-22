@@ -20,6 +20,25 @@ export const paramsWithIdSchema = {
   additionalProperties: false,
 } as const;
 
+export const deleteMultipleServersSchema = {
+  body: {
+    type: "object",
+    properties: {
+      ids: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+      },
+    },
+    required: ["ids"],
+    additionalProperties: false,
+  },
+} as const;
+
+export type FromDeleteMultipleServers = FromSchema<
+  typeof deleteMultipleServersSchema.body
+>;
+
 const openvpnConfigSchema = {
   type: "object",
   properties: {
@@ -52,7 +71,7 @@ const serverFlatBase = {
     country_id: { type: "string" },
     country: { type: "string" },
     country_code: { type: "string" },
-    flag: { type: "string" }, 
+    flag: { type: "string" },
     city_id: { type: "string" },
     city: { type: "string" },
     is_pro: { type: "boolean" },
@@ -415,6 +434,60 @@ export const serverDownSchema = {
     },
   },
 } as const;
+
+export const serverStatusSchema = {
+  params: {
+    type: "object",
+    properties: {
+      ip: { type: "string", description: "Target server IP address" },
+    },
+    required: ["ip"],
+  },
+  response: {
+    200: {
+      description: "Stream of server status data",
+      type: "object",
+      properties: {
+        clients: { type: "number" },
+        speed: {
+          type: "object",
+          properties: {
+            download_speed: { type: "string" },
+            upload_speed: { type: "string" },
+          },
+        },
+        total_usage: {
+          type: "object",
+          properties: {
+            received: { type: "string" },
+            sent: { type: "string" },
+          },
+        },
+        ram: {
+          type: "object",
+          properties: {
+            total: { type: "string" },
+            used: { type: "string" },
+            percentage: { type: "number" },
+          },
+        },
+        cpu: {
+          type: "object",
+          properties: {
+            percentage: { type: "number" },
+          },
+        },
+        server_actual: {
+          type: "object",
+          properties: {
+            download_speed: { type: "string" },
+            upload_speed: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};
 
 // ---------- Types ----------
 export type FromCreateMultipleServersBody = FromSchema<

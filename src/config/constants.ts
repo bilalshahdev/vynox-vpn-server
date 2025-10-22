@@ -3,6 +3,7 @@
 export const adminEmail = process.env.ADMIN_EMAIL || "vynox@admin.com";
 export const adminPassword = process.env.ADMIN_PASSWORD || "ffffff";
 export const limit = process.env.LIMIT || 50;
+export const serverStatsPort = process.env.SERVER_STATS_PORT || 3001;
 
 export const smtpHost = process.env.SMTP_HOST || "localhost";
 export const smtpPort = Number(process.env.SMTP_PORT) || 587;

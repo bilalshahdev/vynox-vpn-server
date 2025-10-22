@@ -98,14 +98,10 @@ export async function updateCountry(
 export async function deleteCountry(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
 
-  // First delete the country
   const res = await CountryModel.findByIdAndDelete(id);
 
   if (res) {
-    // Cascade delete: all cities for this country
     await CityModel.deleteMany({ country_id: id });
-
-    // Cascade delete: all servers for this country
     await ServerModel.deleteMany({ "general.country_code": id });
 
     await bumpCollectionVersion(redis);

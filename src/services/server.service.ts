@@ -1,6 +1,6 @@
 // src/services/server.service.ts
 import type Redis from "ioredis";
-import mongoose, { FilterQuery, UpdateQuery } from "mongoose";
+import mongoose, { UpdateQuery } from "mongoose";
 import { ConnectivityModel } from "../models/connectivity.model";
 import { FeedbackModel } from "../models/feedback.model";
 import { IServer, ServerModel } from "../models/server.model";
@@ -14,12 +14,12 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
-
-export type ServerListFilter = {
-  os_type?: "android" | "ios";
-  mode?: "test" | "live" | "off";
-  search?: string;
-};
+import {
+  buildServerAggPipeline,
+  flattenServer,
+  ServerListFilter,
+  toByIdItem,
+} from "../utils/servers";
 
 type CacheDeps = {
   redis?: Redis;
@@ -30,117 +30,6 @@ type CacheDeps = {
 const DEFAULT_LIST_TTL = 60;
 const DEFAULT_ID_TTL = 300;
 
-function flattenServer(serverDoc: any) {
-  if (!serverDoc) return null;
-
-  const country = serverDoc.country;
-  const city = serverDoc.city;
-  return {
-    _id: serverDoc._id.toString(),
-    name: serverDoc.general.name,
-    categories: serverDoc.general.categories,
-    country_id: country._id,
-    country: country?.name ?? "",
-    country_code: country?._id ?? "",
-    flag: country?.flag ?? "",
-    city_id: city._id,
-    city: city?.name ?? "",
-    is_pro: serverDoc.general.is_pro,
-    mode: serverDoc.general.mode,
-    ip: serverDoc.general.ip,
-    latitude: city?.latitude ?? serverDoc.general.latitude ?? 0,
-    longitude: city?.longitude ?? serverDoc.general.longitude ?? 0,
-    os_type: serverDoc.general.os_type,
-    created_at: serverDoc.created_at.toISOString(),
-    updated_at: serverDoc.updated_at.toISOString(),
-  };
-}
-
-function buildServerAggPipeline(filter: ServerListFilter) {
-  const q = buildServerQuery(filter);
-  const pipeline: any[] = [
-    { $match: q },
-    {
-      $lookup: {
-        from: "countries",
-        localField: "general.country_id",
-        foreignField: "_id",
-        as: "country",
-      },
-    },
-    { $unwind: "$country" },
-    {
-      $lookup: {
-        from: "cities",
-        localField: "general.city_id",
-        foreignField: "_id",
-        as: "city",
-      },
-    },
-    { $unwind: "$city" },
-  ];
-
-  if (filter.search) {
-    const regex = new RegExp(filter.search, "i");
-    pipeline.push({
-      $match: {
-        $or: [
-          { "general.name": regex },
-          { "city.name": regex },
-          { "country.name": regex },
-        ],
-      },
-    });
-  }
-
-  return pipeline;
-}
-
-function applyPagination(pipeline: any[], page: number, limit: number) {
-  pipeline.push({ $sort: { created_at: -1 } });
-  pipeline.push({ $skip: (page - 1) * limit });
-  pipeline.push({ $limit: limit });
-}
-
-function toNullableConfig<T extends Record<string, any> | undefined | null>(
-  cfg: T
-) {
-  if (!cfg) return null;
-  const values = Object.values(cfg).filter(
-    (v) => v !== undefined && v !== null && v !== ""
-  );
-  return values.length ? (cfg as any) : null;
-}
-
-function toByIdItem(doc: IServer & { _id: any }) {
-  const country = doc.general.country_id;
-  const city = doc.general.city_id;
-  const base = flattenServer({ ...doc, country, city });
-  return {
-    ...base,
-    openvpn_config: toNullableConfig(doc.openvpn_config),
-    wireguard_config: toNullableConfig(doc.wireguard_config),
-  };
-}
-
-function buildServerQuery(filter: ServerListFilter): FilterQuery<IServer> {
-  const q: FilterQuery<IServer> = {};
-
-  if (filter.os_type) {
-    q["general.os_type"] = filter.os_type;
-  }
-
-  if (filter.mode) {
-    if (filter.mode === "test") {
-      q["general.mode"] = { $in: ["live", "test", "off"] };
-    } else {
-      q["general.mode"] = filter.mode;
-    }
-  }
-
-  return q;
-}
-
 export async function listServers(
   filter: ServerListFilter,
   page = 1,
@@ -148,10 +37,6 @@ export async function listServers(
   deps: CacheDeps = {}
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
-
-  const keys = await redis?.keys("*");
-  console.log({keys});
-
   const ver = await getCollectionVersion(redis);
   const keyPayload = { type: "list", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
@@ -163,21 +48,26 @@ export async function listServers(
 
   const pipeline = buildServerAggPipeline(filter);
 
-  // Count total
-  const countPipeline = [
-    ...pipeline.filter((s) => !("$skip" in s || "$limit" in s)),
-  ];
-  countPipeline.push({ $count: "total" });
-  const countResult = await ServerModel.aggregate(countPipeline);
-  const total = countResult[0]?.total || 0;
+  pipeline.push({
+    $facet: {
+      metadata: [{ $count: "total" }],
+      data: [
+        { $sort: { created_at: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ],
+    },
+  });
 
-  applyPagination(pipeline, page, limit);
-  const serversAgg = await ServerModel.aggregate(pipeline);
-  const data = serversAgg.map(flattenServer);
+  const [aggResult] = await ServerModel.aggregate(pipeline);
+
+  const total = aggResult?.metadata?.[0]?.total || 0;
+  const data = aggResult?.data.map(flattenServer);
+  const pages = Math.max(1, Math.ceil(total / limit));
 
   const result = {
     success: true,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
+    pagination: { page, limit, total, pages },
     data,
   };
 
@@ -192,7 +82,6 @@ export async function listGroupedServers(
   deps: CacheDeps = {}
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
-
   const ver = await getCollectionVersion(redis);
   const keyPayload = { type: "grouped", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
@@ -203,11 +92,10 @@ export async function listGroupedServers(
   }
 
   const pipeline = buildServerAggPipeline(filter);
-  applyPagination(pipeline, 1, 1000); // fetch all for grouping
 
   const serversAgg = await ServerModel.aggregate(pipeline);
-  const grouped: Record<string, any> = {};
 
+  const grouped: Record<string, any> = {};
   serversAgg.forEach((s) => {
     const key = s.country._id;
     if (!grouped[key]) {
@@ -239,9 +127,8 @@ export async function getServerById(id: string, deps: CacheDeps = {}) {
   const { redis, idTtlSec = DEFAULT_ID_TTL } = deps;
   const idKey = CacheKeys.byId(id);
 
-  // Try cache (already transformed)
   const cached = await getJSON<any>(redis, idKey);
-  // if (cached) return cached;
+  if (cached) return cached;
 
   const serverDoc = await ServerModel.findById(id)
     .populate("general.country_id")
@@ -261,7 +148,6 @@ export async function createServer(
 ) {
   const { redis } = deps;
 
-  // app-level guard (nice error), DB index is the final authority
   const existing = await ServerModel.findOne({
     "general.ip": payload.general?.ip,
     "general.os_type": payload.general?.os_type,
@@ -294,11 +180,9 @@ export async function updateServer(
 ) {
   const { redis } = deps;
 
-  // 1) normalize nested paths
   update = normalizeGeneralToSet(update);
   const $set = (update as any).$set || {};
 
-  // 2) compute next (ip, os_type) pair to check
   const ipChanged = $set["general.ip"] != null;
   const osChanged = $set["general.os_type"] != null;
 
@@ -453,17 +337,14 @@ export async function deleteServer(id: string, deps: CacheDeps = {}) {
       return false;
     }
 
-    // delete all referenced records
     await Promise.all([
       ConnectivityModel.deleteMany({ server_id: id }, { session }),
       FeedbackModel.deleteMany({ server_id: id }, { session }),
     ]);
 
-    // commit only if all succeeded
     await session.commitTransaction();
     session.endSession();
 
-    // update cache after success
     await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
 
@@ -472,6 +353,45 @@ export async function deleteServer(id: string, deps: CacheDeps = {}) {
     await session.abortTransaction();
     session.endSession();
     console.error("Delete server failed:", error);
+    return false;
+  }
+}
+
+export async function deleteMultipleServers(
+  ids: string[],
+  deps: CacheDeps = {}
+) {
+  const { redis } = deps;
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const servers = await ServerModel.deleteMany(
+      { _id: { $in: ids } },
+      { session }
+    );
+    if (!servers.deletedCount) {
+      await session.abortTransaction();
+      session.endSession();
+      return false;
+    }
+
+    await Promise.all([
+      ConnectivityModel.deleteMany({ server_id: { $in: ids } }, { session }),
+      FeedbackModel.deleteMany({ server_id: { $in: ids } }, { session }),
+    ]);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await Promise.all(ids.map((id) => del(redis, CacheKeys.byId(id))));
+    await bumpCollectionVersion(redis);
+
+    return true;
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Bulk delete servers failed:", error);
     return false;
   }
 }
