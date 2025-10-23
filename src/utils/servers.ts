@@ -72,6 +72,7 @@ function buildServerAggPipeline(filter: ServerListFilter) {
           { "general.name": regex },
           { "city.name": regex },
           { "country.name": regex },
+          { "general.ip": regex },
         ],
       },
     });
