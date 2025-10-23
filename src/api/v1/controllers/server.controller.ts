@@ -6,6 +6,7 @@ import * as S from "../../../services/server.service";
 import { ServerModel } from "../../../models/server.model";
 import { sendServerDownEmail } from "../../../utils/sendServerDownEmail";
 import { serverStatsPort } from "../../../config/constants";
+import { config } from "../../../config";
 
 export async function listServers(
   req: FastifyRequest<{ Querystring: SCH.FromListServersQuery }>,
@@ -69,15 +70,20 @@ export async function streamServerStatus(
 
   const url = `http://${ip}:${serverStatsPort}/status`;
 
-  // Set up Server-Sent Events headers
+  const origin = req.headers.origin;
+  const isAllowed = config.cors.origins.some((rule) =>
+    rule instanceof RegExp ? rule.test(origin || "") : rule === origin
+  );
+
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
+    "Access-Control-Allow-Origin": isAllowed ? origin || "*" : "null",
+    "Access-Control-Allow-Credentials": "true",
   });
 
   const request = http.get(url, (res) => {
-    // Check non-200 responses
     if (res.statusCode !== 200) {
       reply.raw.write(
         `event: error\ndata: ${JSON.stringify({
@@ -89,7 +95,6 @@ export async function streamServerStatus(
       return;
     }
 
-    // Forward chunks
     res.on("data", (chunk) => {
       try {
         reply.raw.write(chunk);
@@ -103,7 +108,6 @@ export async function streamServerStatus(
     });
   });
 
-  // Handle request errors
   request.on("error", (err: any) => {
     console.error("Error connecting to status server:", err.message);
     reply.raw.write(
@@ -113,14 +117,12 @@ export async function streamServerStatus(
             ? `Connection refused: The server at ${ip} might be offline or not exposing status on port ${serverStatsPort}`
             : err.code === "ENOTFOUND"
             ? `Invalid IP address: ${ip}`
-            : // : err.message + " - No stats available for this server.",
-              "No stats available for this server.",
+            : "No stats available for this server.",
       })}\n\n`
     );
     reply.raw.end();
   });
 
-  // Handle client disconnect
   req.raw.on("close", () => {
     request.destroy();
   });
