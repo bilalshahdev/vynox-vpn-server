@@ -55,6 +55,12 @@ export async function streamServerStatus(
 ) {
   const { ip } = req.params;
 
+  if (!ip) {
+    return reply
+      .code(400)
+      .send({ success: false, message: "Missing server IP" });
+  }
+
   if (!serverStatsPort) {
     return reply
       .code(500)
@@ -71,8 +77,25 @@ export async function streamServerStatus(
   });
 
   const request = http.get(url, (res) => {
+    // Check non-200 responses
+    if (res.statusCode !== 200) {
+      reply.raw.write(
+        `event: error\ndata: ${JSON.stringify({
+          error: `Failed to fetch status from ${ip}. Server responded with ${res.statusCode} ${res.statusMessage}`,
+        })}\n\n`
+      );
+      reply.raw.end();
+      request.destroy();
+      return;
+    }
+
+    // Forward chunks
     res.on("data", (chunk) => {
-      reply.raw.write(chunk);
+      try {
+        reply.raw.write(chunk);
+      } catch (err) {
+        console.error("Error writing SSE chunk:", err);
+      }
     });
 
     res.on("end", () => {
@@ -80,15 +103,26 @@ export async function streamServerStatus(
     });
   });
 
-  request.on("error", (err) => {
+  // Handle request errors
+  request.on("error", (err: any) => {
     console.error("Error connecting to status server:", err.message);
-    reply.raw.end(
-      `event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`
+    reply.raw.write(
+      `event: error\ndata: ${JSON.stringify({
+        error:
+          err.code === "ECONNREFUSED"
+            ? `Connection refused: The server at ${ip} might be offline or not exposing status on port ${serverStatsPort}`
+            : err.code === "ENOTFOUND"
+            ? `Invalid IP address: ${ip}`
+            : // : err.message + " - No stats available for this server.",
+              "No stats available for this server.",
+      })}\n\n`
     );
+    reply.raw.end();
   });
 
+  // Handle client disconnect
   req.raw.on("close", () => {
-    request.destroy(); // stop when client disconnects
+    request.destroy();
   });
 }
 
