@@ -52,8 +52,8 @@ const openvpnConfigSchema = {
 const wireguardConfigSchema = {
   type: "object",
   properties: {
-    address: { type: "string" },
-    config: { type: "string" },
+    url: { type: "string" },
+    api_token: { type: "string" },
   },
   additionalProperties: false,
 } as const;

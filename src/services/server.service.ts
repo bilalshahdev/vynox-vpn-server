@@ -302,14 +302,14 @@ export async function updateOpenVPNConfig(
 
 export async function updateWireguardConfig(
   id: string,
-  cfg: { address?: string; config?: string },
+  cfg: { url?: string; api_token?: string },
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
 
   const $set: Record<string, any> = {};
-  if ("address" in cfg) $set["wireguard_config.address"] = cfg.address;
-  if ("config" in cfg) $set["wireguard_config.config"] = cfg.config;
+  if ("url" in cfg) $set["wireguard_config.url"] = cfg.url;
+  if ("api_token" in cfg) $set["wireguard_config.api_token"] = cfg.api_token;
 
   const doc = await ServerModel.findByIdAndUpdate(
     id,

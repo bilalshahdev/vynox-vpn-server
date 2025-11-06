@@ -13,7 +13,7 @@ export interface IServer extends Document {
     os_type: "android" | "ios";
   };
   openvpn_config?: { username: string; password: string; config: string };
-  wireguard_config?: { address: string; config: string };
+  wireguard_config?: { url: String; api_token: String };
   created_at: Date;
   updated_at: Date;
 }
@@ -39,7 +39,7 @@ const serverSchema = new Schema<IServer>(
       os_type: { type: String, enum: ["android", "ios"], required: true },
     },
     openvpn_config: { username: String, password: String, config: String },
-    wireguard_config: { address: String, config: String },
+    wireguard_config: { url: String, api_token: String },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
