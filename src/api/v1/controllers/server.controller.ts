@@ -249,6 +249,23 @@ export async function updateWireguardConfig(
   return reply.send({ success: true, data: server });
 }
 
+export async function updateXRayConfig(
+  req: FastifyRequest<{
+    Params: SCH.FromParamsWithId;
+    Body: SCH.FromUpdateXRayConfigBody;
+  }>,
+  reply: FastifyReply
+) {
+  const server = await S.updateXRayConfig(req.params.id, req.body, {
+    redis: req.server.redis,
+  });
+  if (!server)
+    return reply
+      .code(404)
+      .send({ success: false, message: "Server not found" });
+  return reply.send({ success: true, data: server });
+}
+
 export async function remove(
   req: FastifyRequest<{ Params: SCH.FromParamsWithId }>,
   reply: FastifyReply

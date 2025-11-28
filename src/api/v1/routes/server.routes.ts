@@ -96,6 +96,13 @@ export default async function serverRoutes(app: FastifyInstance) {
     C.updateWireguardConfig
   );
 
+  // PATCH /servers/:id/xray-config
+  app.patch<{ Params: S.FromParamsWithId; Body: S.FromUpdateXRayConfigBody }>(
+    "/:id/xray-config",
+    { schema: S.updateXRayConfigSchema, preHandler: verifyToken },
+    C.updateXRayConfig
+  );
+
   // DELETE /servers/:id
   app.delete<{ Params: S.FromParamsWithId }>(
     "/:id",

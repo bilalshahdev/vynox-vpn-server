@@ -99,6 +99,7 @@ function toByIdItem(doc: IServer & { _id: any }) {
     ...base,
     openvpn_config: toNullableConfig(doc.openvpn_config),
     wireguard_config: toNullableConfig(doc.wireguard_config),
+    xray_config: toNullableConfig(doc.xray_config),
   };
 }
 

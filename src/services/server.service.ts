@@ -147,7 +147,6 @@ export async function createServer(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
-
   const existing = await ServerModel.findOne({
     "general.ip": payload.general?.ip,
     "general.os_type": payload.general?.os_type,
@@ -179,7 +178,7 @@ export async function updateServer(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
-
+  
   update = normalizeGeneralToSet(update);
   const $set = (update as any).$set || {};
 
@@ -310,6 +309,37 @@ export async function updateWireguardConfig(
   const $set: Record<string, any> = {};
   if ("url" in cfg) $set["wireguard_config.url"] = cfg.url;
   if ("api_token" in cfg) $set["wireguard_config.api_token"] = cfg.api_token;
+
+  const doc = await ServerModel.findByIdAndUpdate(
+    id,
+    Object.keys($set).length ? { $set } : {},
+    { new: true, runValidators: true }
+  ).lean();
+
+  if (doc) {
+    await del(redis, CacheKeys.byId(id));
+    await bumpCollectionVersion(redis);
+  }
+  return doc;
+}
+
+export async function updateXRayConfig(
+  id: string,
+  cfg: {
+    shadowsocks?: string;
+    vless?: string;
+    vmess?: string;
+    torjan?: string;
+  },
+  deps: CacheDeps = {}
+) {
+  const { redis } = deps;
+
+  const $set: Record<string, any> = {};
+  if ("shadowsocks" in cfg) $set["xray_config.shadowsocks"] = cfg.shadowsocks;
+  if ("vless" in cfg) $set["xray_config.vless"] = cfg.vless;
+  if ("vmess" in cfg) $set["xray_config.vmess"] = cfg.vmess;
+  if ("torjan" in cfg) $set["xray_config.torjan"] = cfg.torjan;
 
   const doc = await ServerModel.findByIdAndUpdate(
     id,

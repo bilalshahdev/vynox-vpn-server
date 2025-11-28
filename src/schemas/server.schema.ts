@@ -58,6 +58,17 @@ const wireguardConfigSchema = {
   additionalProperties: false,
 } as const;
 
+const xrayConfigSchema = {
+  type: "object",
+  properties: {
+    shadowsocks: { type: "string" },
+    vless: { type: "string" },
+    vmess: { type: "string" },
+    torjan: { type: "string" },
+  },
+  additionalProperties: false,
+} as const;
+
 /**
  * Flattened server shape (used for list items and by-id base)
  * This matches your public API response shape.
@@ -111,6 +122,9 @@ const openvpnConfigOrNull = {
 const wireguardConfigOrNull = {
   anyOf: [wireguardConfigSchema, { type: "null" }],
 } as const;
+const xrayConfigOrNull = {
+  anyOf: [xrayConfigSchema, { type: "null" }],
+} as const;
 
 export const serverByIdOutSchema = {
   ...serverFlatBase,
@@ -118,6 +132,7 @@ export const serverByIdOutSchema = {
     ...serverFlatBase.properties,
     openvpn_config: openvpnConfigOrNull,
     wireguard_config: wireguardConfigOrNull,
+    xray_config: xrayConfigOrNull,
   },
 } as const;
 
@@ -224,6 +239,7 @@ const serverDocOutSchema = {
     },
     openvpn_config: openvpnConfigOrNull,
     wireguard_config: wireguardConfigOrNull,
+    xray_config: xrayConfigOrNull,
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
@@ -249,6 +265,7 @@ export const createServerSchema = {
       },
       openvpn_config: openvpnConfigSchema,
       wireguard_config: wireguardConfigSchema,
+      xray_config: xrayConfigSchema,
     },
     required: ["general"],
     additionalProperties: false,
@@ -288,6 +305,7 @@ export const updateServerSchema = {
       },
       openvpn_config: openvpnConfigSchema,
       wireguard_config: wireguardConfigSchema,
+      xray_config: xrayConfigSchema,
     },
     additionalProperties: false,
   } as const,
@@ -371,6 +389,23 @@ export const updateWireguardConfigSchema = {
   params: paramsWithIdSchema,
   body: {
     ...wireguardConfigSchema,
+    minProperties: 1,
+  } as const,
+  response: {
+    200: {
+      type: "object",
+      properties: { success: { type: "boolean" }, data: serverDocOutSchema },
+      required: ["success", "data"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+// ---------- XRay Config ----------
+export const updateXRayConfigSchema = {
+  params: paramsWithIdSchema,
+  body: {
+    ...xrayConfigSchema,
     minProperties: 1,
   } as const,
   response: {
@@ -505,5 +540,8 @@ export type FromUpdateOpenVPNConfigBody = FromSchema<
 >;
 export type FromUpdateWireguardConfigBody = FromSchema<
   typeof updateWireguardConfigSchema.body
+>;
+export type FromUpdateXRayConfigBody = FromSchema<
+  typeof updateXRayConfigSchema.body
 >;
 export type FromParamsWithId = FromSchema<typeof paramsWithIdSchema>;

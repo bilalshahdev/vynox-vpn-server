@@ -14,6 +14,12 @@ export interface IServer extends Document {
   };
   openvpn_config?: { username: string; password: string; config: string };
   wireguard_config?: { url: String; api_token: String };
+  xray_config?: {
+    shadowsocks: String;
+    vless: String;
+    vmess: String;
+    torjan: String;
+  };
   created_at: Date;
   updated_at: Date;
 }
@@ -40,6 +46,12 @@ const serverSchema = new Schema<IServer>(
     },
     openvpn_config: { username: String, password: String, config: String },
     wireguard_config: { url: String, api_token: String },
+    xray_config: {
+      shadowsocks: String,
+      vless: String,
+      vmess: String,
+      torjan: String,
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
