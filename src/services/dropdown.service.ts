@@ -47,11 +47,13 @@ export async function listDropdowns(
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(payload)));
 
   const cached = await getJSON<unknown>(redis, listKey);
+  console.log({cached})
   if (cached) return cached;
 
   const cursor = Dropdown.find(q).lean().sort({ name: 1, created_at: -1 });
   const total = await Dropdown.countDocuments(q);
   const items = await cursor.skip((page - 1) * limit).limit(limit);
+  console.log({items})
 
   const result = {
     success: true,

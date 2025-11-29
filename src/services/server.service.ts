@@ -37,17 +37,99 @@ export async function listServers(
   deps: CacheDeps = {}
 ) {
   const { redis, listTtlSec = DEFAULT_LIST_TTL } = deps;
+
+  // 1️⃣ Get collection version for cache key
   const ver = await getCollectionVersion(redis);
+
+  // Include protocol in key only if it exists
   const keyPayload = { type: "list", ...filter, page, limit };
   const listKey = CacheKeys.list(ver, hashKey(stableStringify(keyPayload)));
 
+  // 2️⃣ Return cached result if available
   if (redis) {
     const cached = await getJSON(redis, listKey);
     if (cached) return cached;
   }
 
+  // 3️⃣ Build Mongo aggregation pipeline based on filters
   const pipeline = buildServerAggPipeline(filter);
 
+  pipeline.push({
+    $addFields: {
+      protocol: {
+        $switch: {
+          branches: [
+            {
+              case: {
+                $gt: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: { $objectToArray: "$openvpn_config" },
+                        cond: {
+                          $and: [
+                            { $ne: ["$$this.v", null] },
+                            { $ne: ["$$this.v", ""] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                  0,
+                ],
+              },
+              then: "openvpn",
+            },
+            {
+              case: {
+                $gt: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: { $objectToArray: "$wireguard_config" },
+                        cond: {
+                          $and: [
+                            { $ne: ["$$this.v", null] },
+                            { $ne: ["$$this.v", ""] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                  0,
+                ],
+              },
+              then: "wireguard",
+            },
+            {
+              case: {
+                $gt: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: { $objectToArray: "$xray_config" },
+                        cond: {
+                          $and: [
+                            { $ne: ["$$this.v", null] },
+                            { $ne: ["$$this.v", ""] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                  0,
+                ],
+              },
+              then: "xray",
+            },
+          ],
+          default: null,
+        },
+      },
+    },
+  });
+
+  // 5️⃣ Pagination & total count using $facet
   pipeline.push({
     $facet: {
       metadata: [{ $count: "total" }],
@@ -59,10 +141,13 @@ export async function listServers(
     },
   });
 
+  // 6️⃣ Execute aggregation
   const [aggResult] = await ServerModel.aggregate(pipeline);
 
   const total = aggResult?.metadata?.[0]?.total || 0;
-  const data = aggResult?.data.map(flattenServer);
+  const data = aggResult?.data.map(flattenServer); // flattenServer can keep protocol
+
+  console.log({ data });
   const pages = Math.max(1, Math.ceil(total / limit));
 
   const result = {
@@ -71,7 +156,9 @@ export async function listServers(
     data,
   };
 
+  // 7️⃣ Cache the result if Redis exists
   if (redis) await setJSON(redis, listKey, result, listTtlSec);
+
   return result;
 }
 
@@ -178,7 +265,7 @@ export async function updateServer(
   deps: CacheDeps = {}
 ) {
   const { redis } = deps;
-  
+
   update = normalizeGeneralToSet(update);
   const $set = (update as any).$set || {};
 

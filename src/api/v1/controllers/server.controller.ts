@@ -12,10 +12,15 @@ export async function listServers(
   req: FastifyRequest<{ Querystring: SCH.FromListServersQuery }>,
   reply: FastifyReply
 ) {
-  const { os_type, mode, search, page = 1, limit = 50 } = req.query;
-  const result = await S.listServers({ os_type, mode, search }, page, limit, {
-    redis: req.server.redis,
-  });
+  const { os_type, mode, search, protocol, page = 1, limit = 50 } = req.query;
+
+  const result = await S.listServers(
+    { os_type, mode, search, protocol },
+    page,
+    limit,
+    { redis: req.server.redis }
+  );
+
   return reply.send(result);
 }
 

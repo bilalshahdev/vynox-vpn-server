@@ -5,6 +5,7 @@ type ServerListFilter = {
   os_type?: "android" | "ios";
   mode?: "test" | "live" | "off";
   search?: string;
+  protocol?: "openvpn" | "wireguard" | "xray";
 };
 
 function flattenServer(serverDoc: any) {
@@ -28,6 +29,7 @@ function flattenServer(serverDoc: any) {
     latitude: city?.latitude ?? serverDoc.general.latitude ?? 0,
     longitude: city?.longitude ?? serverDoc.general.longitude ?? 0,
     os_type: serverDoc.general.os_type,
+    protocol: serverDoc.protocol ?? null, // ✅ add this
     created_at: serverDoc.created_at.toISOString(),
     updated_at: serverDoc.updated_at.toISOString(),
   };
@@ -64,6 +66,7 @@ function buildServerAggPipeline(filter: ServerListFilter) {
     { $unwind: "$city" },
   ];
 
+  // Search filter
   if (filter.search) {
     const regex = new RegExp(filter.search, "i");
     pipeline.push({
@@ -74,6 +77,165 @@ function buildServerAggPipeline(filter: ServerListFilter) {
           { "country.name": regex },
           { "general.ip": regex },
         ],
+      },
+    });
+  }
+
+  //  ✅ Protocol filter AFTER $addFields
+  if (filter.protocol) {
+    pipeline.push({
+      $addFields: {
+        protocol: {
+          $switch: {
+            branches: [
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$openvpn_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "openvpn",
+              },
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$wireguard_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "wireguard",
+              },
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$xray_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "xray",
+              },
+            ],
+            default: null,
+          },
+        },
+      },
+    });
+
+    // Match protocol if filter exists
+    pipeline.push({
+      $match: { protocol: filter.protocol },
+    });
+  } else {
+    // if no protocol filter, still compute protocol for output
+    pipeline.push({
+      $addFields: {
+        protocol: {
+          $switch: {
+            branches: [
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$openvpn_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "openvpn",
+              },
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$wireguard_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "wireguard",
+              },
+              {
+                case: {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $objectToArray: "$xray_config" },
+                          cond: {
+                            $and: [
+                              { $ne: ["$$this.v", null] },
+                              { $ne: ["$$this.v", ""] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+                then: "xray",
+              },
+            ],
+            default: null,
+          },
+        },
       },
     });
   }

@@ -9,6 +9,8 @@ const CATEGORY_VALUES = ["gaming", "streaming"] as const;
 const osType = { type: "string", enum: OS_VALUES } as const;
 const modeEnum = { type: "string", enum: MODE_VALUES } as const;
 const categoriesEnum = { type: "string", enum: CATEGORY_VALUES } as const;
+const PROTOCOL_VALUES = ["openvpn", "wireguard", "xray"] as const;
+const protocolEnum = { type: "string", enum: PROTOCOL_VALUES } as const;
 
 // ---------- Shared ----------
 export const paramsWithIdSchema = {
@@ -73,6 +75,7 @@ const xrayConfigSchema = {
  * Flattened server shape (used for list items and by-id base)
  * This matches your public API response shape.
  */
+
 const serverFlatBase = {
   type: "object",
   properties: {
@@ -91,6 +94,10 @@ const serverFlatBase = {
     latitude: { type: "number" },
     longitude: { type: "number" },
     os_type: osType,
+
+    // FIXED: strict enum
+    protocol: protocolEnum,
+
     created_at: { type: "string" },
     updated_at: { type: "string" },
   },
@@ -108,6 +115,7 @@ const serverFlatBase = {
     "latitude",
     "longitude",
     "os_type",
+    // "protocol",
   ],
   additionalProperties: false,
 } as const;
@@ -149,16 +157,29 @@ const countryGroupSchema = {
   additionalProperties: false,
 } as const;
 
-// Shared query schema (unchanged)
 const querySchema = {
   type: "object",
   properties: {
-    os_type: osType,
-    mode: modeEnum,
-    page: { type: "integer", minimum: 1, default: 1 },
-    limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
-    search: { type: "string" }, // you can implement search against country/city name in service
+    os_type: osType, // enum/schema for OS type
+    mode: modeEnum, // enum/schema for mode
+    protocol: protocolEnum, // ✅ added protocol
+    page: {
+      type: "integer",
+      minimum: 1,
+      default: 1,
+    },
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 200,
+      default: 50,
+    },
+    search: {
+      type: "string",
+      minLength: 1,
+    },
   },
+  // required: ["os_type", "mode"],
   additionalProperties: false,
 } as const;
 
