@@ -15,7 +15,7 @@ if (!JWT_SECRET) {
 
 export const generateToken = (
   payload: JwtPayload,
-  expiresIn: StringValue | number = "1h"
+  expiresIn: StringValue | number = "1d"
 ): string => {
   const options: SignOptions = { expiresIn };
   return jwt.sign(payload, JWT_SECRET, options);
