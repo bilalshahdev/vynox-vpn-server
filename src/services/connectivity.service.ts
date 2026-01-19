@@ -13,6 +13,8 @@ import {
   setJSON,
   stableStringify,
 } from "../utils/cache";
+import { bus } from "../events/bus";
+import assertServerExists from "../utils/assertServerExists";
 
 export type ConnectivityListFilter = {
   user_id?: string;
@@ -114,36 +116,23 @@ export async function getServersWithConnectionStats(
     {
       $lookup: {
         from: "connectivities",
-        let: { sid: { $toString: "$_id" } },
+        localField: "_id",
+        foreignField: "server_id",
+        as: "connections",
         pipeline: [
-          {
-            $match: {
-              $expr: { $eq: ["$server_id", "$$sid"] },
-            },
-          },
           {
             $group: {
               _id: null,
               total: { $sum: 1 },
               active: {
                 $sum: {
-                  $cond: [
-                    {
-                      $or: [
-                        { $eq: ["$disconnected_at", null] },
-                        { $not: ["$disconnected_at"] },
-                      ],
-                    },
-                    1,
-                    0,
-                  ],
+                  $cond: [{ $eq: ["$disconnected_at", null] }, 1, 0],
                 },
               },
             },
           },
           { $project: { _id: 0, total: 1, active: 1 } },
         ],
-        as: "connections",
       },
     },
     {
@@ -244,6 +233,8 @@ export async function connect(
   const { redis } = deps;
   const now = new Date();
 
+  await assertServerExists(payload.server_id);
+
   const existing = await ConnectivityModel.exists({
     user_id: payload.user_id,
     server_id: payload.server_id,
@@ -254,7 +245,7 @@ export async function connect(
   try {
     const created = await ConnectivityModel.create({
       user_id: payload.user_id,
-      server_id: payload.server_id,
+      server_id: payload.server_id, // store as ObjectId if schema is ObjectId
       connected_at: now,
       disconnected_at: null,
     });
@@ -262,11 +253,16 @@ export async function connect(
     await bumpCollectionVersion(redis);
     await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
 
+    bus.emit("connectivity.connected", {
+      _id: String(created._id),
+      user_id: payload.user_id,
+      server_id: payload.server_id,
+      connected_at: created.connected_at.toISOString(),
+    });
+
     return { status: "created", data: created.toObject() };
   } catch (err: any) {
-    if (err?.code === 11000) {
-      return { status: "conflict" };
-    }
+    if (err?.code === 11000) return { status: "conflict" };
     throw err;
   }
 }
@@ -277,6 +273,8 @@ export async function disconnect(
 ) {
   const { redis } = deps;
   const now = new Date();
+
+  await assertServerExists(payload.server_id);
 
   const updatedDoc = await ConnectivityModel.findOneAndUpdate(
     {
@@ -289,14 +287,20 @@ export async function disconnect(
     { new: true, runValidators: true }
   );
 
-  if (updatedDoc) {
-    await bumpCollectionVersion(redis);
-    await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
-    await del(redis, CacheKeys.byId(String(updatedDoc._id)));
-    return updatedDoc.toObject();
-  }
+  if (!updatedDoc) return null;
 
-  return null;
+  await bumpCollectionVersion(redis);
+  await del(redis, CacheKeys.openByPair(payload.user_id, payload.server_id));
+  await del(redis, CacheKeys.byId(String(updatedDoc._id)));
+
+  bus.emit("connectivity.disconnected", {
+    _id: String(updatedDoc._id),
+    user_id: updatedDoc.user_id,
+    server_id: String(updatedDoc.server_id),
+    disconnected_at: updatedDoc.disconnected_at?.toISOString(),
+  });
+
+  return updatedDoc.toObject();
 }
 
 export async function deleteConnectivity(id: string, deps: CacheDeps = {}) {

@@ -1,8 +1,10 @@
+// src/models/connectivity.model.ts
+
 import { Schema, model, Document, models } from "mongoose";
 
 export interface IConnectivity extends Document {
   user_id: string;
-  server_id: string;
+  server_id: Schema.Types.ObjectId;
   connected_at: Date;
   disconnected_at: Date | null;
   created_at: Date;
@@ -12,7 +14,12 @@ export interface IConnectivity extends Document {
 const connectivitySchema = new Schema<IConnectivity>(
   {
     user_id: { type: String, required: true, index: true },
-    server_id: { type: String, ref: "Server", required: true, index: true },
+    server_id: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      ref: "Server",
+      index: true,
+    },
     connected_at: { type: Date, required: true },
     disconnected_at: { type: Date, default: null },
   },

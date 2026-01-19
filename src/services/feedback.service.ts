@@ -13,23 +13,24 @@ import {
   stableStringify,
 } from "../utils/cache";
 import { validateMongoId } from "../utils/validateMongoId";
+import { bus } from "../events/bus";
 
 export type FeedbackListFilter = {
   server_id?: string;
   reason?: string;
-  os_type?: "android" | "ios" 
+  os_type?: "android" | "ios";
   network_type?: "wifi" | "mobile";
   rating?: number;
-  from?: string; 
-  to?: string; 
+  from?: string;
+  to?: string;
 };
 
 export type CreateFeedbackDTO = {
   reason: string;
   review: string;
-  os_type: "android" | "ios"
+  os_type: "android" | "ios";
   server_id?: string;
-  rating?: number; 
+  rating?: number;
   network_type?: "wifi" | "mobile";
 };
 
@@ -111,20 +112,31 @@ export async function createFeedback(
     os_type: dto.os_type,
   };
 
-  if (typeof dto.rating === "number") payload.rating = dto.rating; 
-  if (dto.network_type) (payload as any).network_type = dto.network_type; 
+  if (typeof dto.rating === "number") payload.rating = dto.rating;
+  if (dto.network_type) (payload as any).network_type = dto.network_type;
+  if (dto.server_id)
+    (payload as any).server_id = validateMongoId(dto.server_id);
 
   const created = await FeedbackModel.create(payload);
+
   await bumpCollectionVersion(redis);
+
+  bus.emit("feedback.created", created.toObject());
+
   return created.toObject();
 }
 
 export async function deleteFeedback(id: string, deps: CacheDeps = {}) {
   const { redis } = deps;
+
   const res = await FeedbackModel.findByIdAndDelete(id);
   if (res) {
     await del(redis, CacheKeys.byId(id));
     await bumpCollectionVersion(redis);
+
+    // ✅ emit event
+    bus.emit("feedback.deleted", { _id: id });
   }
+
   return !!res;
 }

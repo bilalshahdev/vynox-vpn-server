@@ -9,6 +9,8 @@ import helmetPlugin from "./plugins/helmet";
 import redisPlugin from "./plugins/redis";
 import swaggerPlugin from "./plugins/swagger";
 import flags from "./plugins/flags";
+import wsPlugin from "./plugins/ws";
+
 // import createLoggerConfig from "./utils/logger";
 
 export function buildApp(): FastifyInstance {
@@ -24,6 +26,7 @@ export function buildApp(): FastifyInstance {
   app.register(errorHandlerPlugin);
   app.register(helmetPlugin, {});
   app.register(corsPlugin);
+  app.register(wsPlugin);
 
   if (process.env.NODE_ENV !== "production") {
     app.register(fastifyMetrics, { endpoint: "/metrics" });
